@@ -47,32 +47,24 @@ if (process.env.GEMINI_API_KEY) {
   }
 }
 
-// In-Memory Database State
-let storesData: Store[] = [...INITIAL_STORES];
-let rewardsData: RewardItem[] = [...INITIAL_REWARDS];
-let walletData: UserWallet = JSON.parse(JSON.stringify(INITIAL_WALLET));
-let transactionsData: Transaction[] = [...INITIAL_TRANSACTIONS];
-let notificationsData: NotificationMessage[] = [...INITIAL_NOTIFICATIONS];
+import {
+  initFirestoreSync,
+  persistUser,
+  persistWallet,
+  persistTransaction,
+  persistNotification,
+  persistReward,
+  storesData,
+  rewardsData,
+  walletData,
+  transactionsData,
+  notificationsData,
+  usersDB,
+  RegisteredUser
+} from './server/dbSync.js';
+
+// In-Memory Fallback State (delegated to dbSync)
 let merchantStatsData = { ...INITIAL_MERCHANT_STATS };
-
-// Registered users database
-interface RegisteredUser {
-  username: string;
-  password: string;
-  fullName: string;
-  email: string;
-  passId: string;
-}
-
-const usersDB: RegisteredUser[] = [
-  {
-    username: 'mambi409',
-    password: '409H!llarY409',
-    fullName: 'Alex Rivera',
-    email: 'mambi409@example.com',
-    passId: 'PASS-9842-SF'
-  }
-];
 
 // API ROUTE: User Authentication (Login)
 app.post('/api/auth/login', (req, res) => {
@@ -111,7 +103,7 @@ app.post('/api/auth/login', (req, res) => {
 });
 
 // API ROUTE: User Registration
-app.post('/api/auth/register', (req, res) => {
+app.post('/api/auth/register', async (req, res) => {
   try {
     const { fullName, username, email, password } = req.body;
 
@@ -146,11 +138,12 @@ app.post('/api/auth/register', (req, res) => {
       passId: newPassId
     };
 
-    usersDB.push(newUser);
+    await persistUser(newUser);
 
     // Update wallet user name for new registration session
     walletData.userName = newUser.fullName;
     walletData.passId = newUser.passId;
+    await persistWallet();
 
     return res.status(201).json({
       success: true,
@@ -254,7 +247,7 @@ app.get('/api/wallet', (req, res) => {
 });
 
 // API ROUTE: Earn Points on Purchase
-app.post('/api/wallet/earn', (req, res) => {
+app.post('/api/wallet/earn', async (req, res) => {
   try {
     const { storeId, amountSpent, description } = req.body;
     const amount = parseFloat(amountSpent);
@@ -275,6 +268,7 @@ app.post('/api/wallet/earn', (req, res) => {
     const previousTier = walletData.currentTier;
     const newTier = calculateTier(walletData.lifetimePoints);
     walletData.currentTier = newTier;
+    await persistWallet();
 
     const newTx: Transaction = {
       id: `tx-${Date.now()}`,
@@ -286,7 +280,7 @@ app.post('/api/wallet/earn', (req, res) => {
       description: description || `In-store purchase at ${store.name}`,
       timestamp: new Date().toISOString()
     };
-    transactionsData.unshift(newTx);
+    await persistTransaction(newTx);
 
     // Push notification to user
     const earnNotif: NotificationMessage = {
@@ -299,7 +293,7 @@ app.post('/api/wallet/earn', (req, res) => {
       storeId: store.id,
       targetRole: 'user'
     };
-    notificationsData.unshift(earnNotif);
+    await persistNotification(earnNotif);
 
     if (previousTier !== newTier) {
       const tierNotif: NotificationMessage = {
@@ -311,7 +305,7 @@ app.post('/api/wallet/earn', (req, res) => {
         read: false,
         targetRole: 'user'
       };
-      notificationsData.unshift(tierNotif);
+      await persistNotification(tierNotif);
     }
 
     res.json({
@@ -328,7 +322,7 @@ app.post('/api/wallet/earn', (req, res) => {
 });
 
 // API ROUTE: Scan Merchant Store QR Code for 1 Instant Point
-app.post('/api/wallet/scan-qr-checkin', (req, res) => {
+app.post('/api/wallet/scan-qr-checkin', async (req, res) => {
   try {
     const { storeId, qrData } = req.body;
     const store = storesData.find((s) => s.id === storeId) || storesData[0];
@@ -340,6 +334,7 @@ app.post('/api/wallet/scan-qr-checkin', (req, res) => {
     const previousTier = walletData.currentTier;
     const newTier = calculateTier(walletData.lifetimePoints);
     walletData.currentTier = newTier;
+    await persistWallet();
 
     const newTx: Transaction = {
       id: `tx-scan-${Date.now()}`,
@@ -350,7 +345,7 @@ app.post('/api/wallet/scan-qr-checkin', (req, res) => {
       description: `In-Store QR Code Scan Check-In at ${store.name} (+1 pt)`,
       timestamp: new Date().toISOString()
     };
-    transactionsData.unshift(newTx);
+    await persistTransaction(newTx);
 
     const scanNotif: NotificationMessage = {
       id: `notif-scan-${Date.now()}`,
@@ -362,7 +357,7 @@ app.post('/api/wallet/scan-qr-checkin', (req, res) => {
       storeId: store.id,
       targetRole: 'user'
     };
-    notificationsData.unshift(scanNotif);
+    await persistNotification(scanNotif);
 
     if (previousTier !== newTier) {
       const tierNotif: NotificationMessage = {
@@ -374,7 +369,7 @@ app.post('/api/wallet/scan-qr-checkin', (req, res) => {
         read: false,
         targetRole: 'user'
       };
-      notificationsData.unshift(tierNotif);
+      await persistNotification(tierNotif);
     }
 
     res.json({
@@ -391,7 +386,7 @@ app.post('/api/wallet/scan-qr-checkin', (req, res) => {
 });
 
 // API ROUTE: Claim / Redeem Reward Voucher
-app.post('/api/wallet/redeem', (req, res) => {
+app.post('/api/wallet/redeem', async (req, res) => {
   try {
     const { rewardId } = req.body;
     const reward = rewardsData.find((r) => r.id === rewardId);
@@ -423,6 +418,7 @@ app.post('/api/wallet/redeem', (req, res) => {
     };
 
     walletData.vouchers.unshift(newVoucher);
+    await persistWallet();
 
     const newTx: Transaction = {
       id: `tx-${Date.now()}`,
@@ -434,7 +430,7 @@ app.post('/api/wallet/redeem', (req, res) => {
       description: `Redeemed voucher for ${reward.title}`,
       timestamp: new Date().toISOString()
     };
-    transactionsData.unshift(newTx);
+    await persistTransaction(newTx);
 
     const redeemNotif: NotificationMessage = {
       id: `notif-${Date.now()}`,
@@ -446,7 +442,7 @@ app.post('/api/wallet/redeem', (req, res) => {
       storeId: reward.storeId,
       targetRole: 'user'
     };
-    notificationsData.unshift(redeemNotif);
+    await persistNotification(redeemNotif);
 
     res.json({
       success: true,
@@ -562,7 +558,7 @@ app.get('/api/notifications', (req, res) => {
 });
 
 // API ROUTE: Send Push Notification (from Merchant or System)
-app.post('/api/notifications/send', (req, res) => {
+app.post('/api/notifications/send', async (req, res) => {
   try {
     const { title, body, type, storeId, targetRole } = req.body;
 
@@ -581,7 +577,7 @@ app.post('/api/notifications/send', (req, res) => {
       targetRole: targetRole || 'user'
     };
 
-    notificationsData.unshift(newNotif);
+    await persistNotification(newNotif);
 
     res.json({ success: true, notification: newNotif });
   } catch (err) {
@@ -590,8 +586,17 @@ app.post('/api/notifications/send', (req, res) => {
 });
 
 // API ROUTE: Mark Notifications Read
-app.post('/api/notifications/mark-read', (req, res) => {
+app.post('/api/notifications/mark-read', async (req, res) => {
   notificationsData.forEach((n) => (n.read = true));
+  await persistNotification(notificationsData[0] || {
+    id: `notif-${Date.now()}`,
+    title: 'Mark Read Sync',
+    body: 'Syncing notification read status',
+    type: 'promo',
+    timestamp: new Date().toISOString(),
+    read: true,
+    targetRole: 'user'
+  });
   res.json({ success: true });
 });
 
@@ -627,7 +632,7 @@ app.get('/api/merchant/stats', (req, res) => {
 });
 
 // API ROUTE: Merchant Scan Member QR & Execute POS Action
-app.post('/api/merchant/scan-pass', (req, res) => {
+app.post('/api/merchant/scan-pass', async (req, res) => {
   try {
     const { passId, action, storeId, amount, voucherCode } = req.body;
 
@@ -648,6 +653,7 @@ app.post('/api/merchant/scan-pass', (req, res) => {
       walletData.pointsBalance += points;
       walletData.lifetimePoints += points;
       walletData.currentTier = calculateTier(walletData.lifetimePoints);
+      await persistWallet();
 
       const tx: Transaction = {
         id: `tx-${Date.now()}`,
@@ -659,10 +665,10 @@ app.post('/api/merchant/scan-pass', (req, res) => {
         description: `POS Checkout at ${store.name}`,
         timestamp: new Date().toISOString()
       };
-      transactionsData.unshift(tx);
+      await persistTransaction(tx);
 
       // Push notification to user
-      notificationsData.unshift({
+      const notif: NotificationMessage = {
         id: `notif-${Date.now()}`,
         title: `✨ In-Store Points Credited! (+${points} pts)`,
         body: `${store.name} credited ${points} points to your pass for Cg ${saleAmount.toFixed(2)}.`,
@@ -671,7 +677,8 @@ app.post('/api/merchant/scan-pass', (req, res) => {
         read: false,
         storeId: store.id,
         targetRole: 'user'
-      });
+      };
+      await persistNotification(notif);
 
       return res.json({
         success: true,
@@ -694,6 +701,7 @@ app.post('/api/merchant/scan-pass', (req, res) => {
       }
 
       voucher.status = 'used';
+      await persistWallet();
 
       const tx: Transaction = {
         id: `tx-${Date.now()}`,
@@ -705,9 +713,9 @@ app.post('/api/merchant/scan-pass', (req, res) => {
         description: `Redeemed voucher #${voucher.id} in-store at ${store.name}`,
         timestamp: new Date().toISOString()
       };
-      transactionsData.unshift(tx);
+      await persistTransaction(tx);
 
-      notificationsData.unshift({
+      const notif: NotificationMessage = {
         id: `notif-${Date.now()}`,
         title: `✅ Voucher Redeemed: ${voucher.title}`,
         body: `Your voucher was successfully processed at ${store.name}. Enjoy your reward!`,
@@ -716,7 +724,8 @@ app.post('/api/merchant/scan-pass', (req, res) => {
         read: false,
         storeId: store.id,
         targetRole: 'user'
-      });
+      };
+      await persistNotification(notif);
 
       return res.json({
         success: true,
@@ -732,7 +741,7 @@ app.post('/api/merchant/scan-pass', (req, res) => {
 });
 
 // API ROUTE: Merchant Add/Edit Reward Offer
-app.post('/api/merchant/rewards', (req, res) => {
+app.post('/api/merchant/rewards', async (req, res) => {
   try {
     const { storeId, title, description, pointsCost, category, discountValue } = req.body;
 
@@ -756,19 +765,20 @@ app.post('/api/merchant/rewards', (req, res) => {
       discountValue: discountValue || 'Partner Special'
     };
 
-    rewardsData.unshift(newReward);
+    await persistReward(newReward);
 
     // Notify users of new reward
-    notificationsData.unshift({
+    const newRewNotif: NotificationMessage = {
       id: `notif-newrew-${Date.now()}`,
       title: `🎁 New Reward Offer at ${store.name}!`,
-      body: `Unlock "${title}" for ${newReward.pointsCost} points!`,
+      body: `Claim "${newReward.title}" now for ${newReward.pointsCost} points in your loyalty wallet.`,
       type: 'promo',
       timestamp: new Date().toISOString(),
       read: false,
       storeId: store.id,
       targetRole: 'user'
-    });
+    };
+    await persistNotification(newRewNotif);
 
     res.json({ success: true, reward: newReward });
   } catch (err) {
@@ -878,6 +888,8 @@ Provide concise advice for maximizing points and best rewards to redeem right no
 
 // Vite Middleware & Static Server Production Setup
 async function startServer() {
+  await initFirestoreSync();
+
   if (process.env.NODE_ENV !== 'production') {
     const vite = await createViteServer({
       server: { middlewareMode: true },

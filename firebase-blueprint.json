@@ -1,0 +1,63 @@
+{
+  "entities": {
+    "users": {
+      "title": "Users",
+      "description": "Registered customer and merchant profiles and wallets",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "passId": { "type": "string" },
+        "points": { "type": "number" },
+        "lifetimePoints": { "type": "number" },
+        "currentTier": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["username", "name"]
+    },
+    "transactions": {
+      "title": "Transactions",
+      "description": "Loyalty point earned and redeemed transactions",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "storeName": { "type": "string" },
+        "amount": { "type": "number" },
+        "points": { "type": "number" },
+        "type": { "type": "string" },
+        "date": { "type": "string" }
+      },
+      "required": ["userId", "amount", "points"]
+    },
+    "rewards": {
+      "title": "Rewards",
+      "description": "Store loyalty catalog rewards",
+      "properties": {
+        "id": { "type": "string" },
+        "storeId": { "type": "string" },
+        "storeName": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "pointsCost": { "type": "number" },
+        "category": { "type": "string" },
+        "active": { "type": "boolean" }
+      },
+      "required": ["title", "pointsCost"]
+    },
+    "notifications": {
+      "title": "Notifications",
+      "description": "Customer notification messages",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "body": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "string" },
+        "read": { "type": "boolean" }
+      },
+      "required": ["title", "body"]
+    }
+  }
+}
