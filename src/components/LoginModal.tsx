@@ -16,7 +16,18 @@ import {
   Building2,
   Wallet
 } from 'lucide-react';
-import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from '../lib/firebase';
+import {
+  auth,
+  db,
+  doc,
+  getDoc,
+  collection,
+  query,
+  where,
+  getDocs,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword
+} from '../lib/firebase';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -107,6 +118,48 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       const data = await res.json();
 
       if (!res.ok || !data.success) {
+        // Direct Client-side Firestore Fallback Verification
+        if (db) {
+          try {
+            const clean = username.trim().toLowerCase();
+            let userDoc: any = null;
+
+            // Direct Firestore document check
+            const userRef = doc(db, 'users', clean);
+            const userSnap = await getDoc(userRef);
+            if (userSnap.exists()) {
+              userDoc = userSnap.data();
+            } else {
+              // Email query check
+              const usersCol = collection(db, 'users');
+              const qEmail = query(usersCol, where('email', '==', clean));
+              const emailSnap = await getDocs(qEmail);
+              if (!emailSnap.empty) {
+                userDoc = emailSnap.docs[0].data();
+              }
+            }
+
+            if (userDoc && userDoc.password === password) {
+              setIsLoading(false);
+              onLoginSuccess(
+                {
+                  username: userDoc.username,
+                  name: userDoc.fullName,
+                  email: userDoc.email,
+                  passId: userDoc.passId,
+                  pinCode: userDoc.pinCode || '12345',
+                  token: `token-fs-${Date.now()}-${userDoc.username}`,
+                  role: 'user'
+                },
+                'user'
+              );
+              return;
+            }
+          } catch (fsErr) {
+            console.log('Client Firestore fallback check error:', fsErr);
+          }
+        }
+
         if (
           (username.trim().toLowerCase() === 'mambi409' || username.trim().toLowerCase() === 'mambi409@example.com') &&
           password === '409H!llarY409'
@@ -125,7 +178,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           );
           return;
         }
-        setError(data.error || 'Invalid email/username or password.');
+        setError(data?.error || 'Invalid email/username or password.');
         setIsLoading(false);
         return;
       }

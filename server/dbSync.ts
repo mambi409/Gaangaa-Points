@@ -6,7 +6,9 @@ import {
   getDocs,
   setDoc,
   addDoc,
-  updateDoc
+  updateDoc,
+  query,
+  where
 } from '../src/lib/firebase.js';
 import {
   INITIAL_STORES,
@@ -160,6 +162,52 @@ export async function initFirestoreSync() {
   } catch (err) {
     console.error('[Firestore] Error during Firestore initialization:', err);
   }
+}
+
+// User lookup helper function
+export async function findUser(identifier: string): Promise<RegisteredUser | null> {
+  if (!identifier) return null;
+  const clean = identifier.trim().toLowerCase();
+
+  // 1. Check in-memory usersDB first
+  const localUser = usersDB.find(
+    (u) =>
+      u.username.toLowerCase() === clean ||
+      (u.email && u.email.toLowerCase() === clean)
+  );
+  if (localUser) return localUser;
+
+  // 2. Query Firestore directly if available
+  if (db) {
+    try {
+      // Check document by username ID
+      const userDocRef = doc(db, 'users', clean);
+      const userSnap = await getDoc(userDocRef);
+      if (userSnap.exists()) {
+        const u = userSnap.data() as RegisteredUser;
+        if (!usersDB.some((x) => x.username.toLowerCase() === u.username.toLowerCase())) {
+          usersDB.push(u);
+        }
+        return u;
+      }
+
+      // Query by email
+      const usersColRef = collection(db, 'users');
+      const qEmail = query(usersColRef, where('email', '==', clean));
+      const emailSnap = await getDocs(qEmail);
+      if (!emailSnap.empty) {
+        const u = emailSnap.docs[0].data() as RegisteredUser;
+        if (!usersDB.some((x) => x.username.toLowerCase() === u.username.toLowerCase())) {
+          usersDB.push(u);
+        }
+        return u;
+      }
+    } catch (err) {
+      console.error('[Firestore] findUser error:', err);
+    }
+  }
+
+  return null;
 }
 
 // Write helper functions

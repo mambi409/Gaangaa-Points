@@ -59,6 +59,7 @@ if (process.env.GEMINI_API_KEY) {
 
 import {
   initFirestoreSync,
+  findUser,
   persistUser,
   persistWallet,
   persistTransaction,
@@ -77,7 +78,7 @@ import {
 let merchantStatsData = { ...INITIAL_MERCHANT_STATS };
 
 // API ROUTE: User Authentication (Login)
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   try {
     const { username, password } = req.body;
 
@@ -87,11 +88,8 @@ app.post('/api/auth/login', (req, res) => {
 
     const cleanIdentifier = username.trim().toLowerCase();
 
-    const foundUser = usersDB.find(
-      (u) =>
-        u.username.toLowerCase() === cleanIdentifier ||
-        (u.email && u.email.toLowerCase() === cleanIdentifier)
-    );
+    // Async lookup checking both in-memory array and Firestore
+    const foundUser = await findUser(cleanIdentifier);
 
     if (foundUser && foundUser.password === password) {
       const pinCode = foundUser.pinCode || walletData.pinCode || '12345';
@@ -145,12 +143,11 @@ app.post('/api/auth/register', async (req, res) => {
 
     const cleanUsername = username.trim();
 
-    const existingUser = usersDB.find(
-      (u) => u.username.toLowerCase() === cleanUsername.toLowerCase() || (u.email && u.email.toLowerCase() === cleanEmail)
-    );
+    const existingUserByUsername = await findUser(cleanUsername);
+    const existingUserByEmail = await findUser(cleanEmail);
 
-    if (existingUser) {
-      if (existingUser.username.toLowerCase() === cleanUsername.toLowerCase()) {
+    if (existingUserByUsername || existingUserByEmail) {
+      if (existingUserByUsername && existingUserByUsername.username.toLowerCase() === cleanUsername.toLowerCase()) {
         return res.status(400).json({ error: 'Username is already taken. Please choose another.' });
       }
       return res.status(400).json({ error: 'Email address is already registered.' });
