@@ -97,11 +97,9 @@ async function ensureSync() {
 }
 
 app.use(async (req, res, next) => {
-  // Normalize req.url for Vercel serverless execution
-  if (!req.url.startsWith('/api') && !req.url.startsWith('/_vite')) {
-    req.url = '/api' + (req.url.startsWith('/') ? '' : '/') + req.url;
+  if (req.path.startsWith('/api') || req.url.startsWith('/api')) {
+    await ensureSync();
   }
-  await ensureSync();
   next();
 });
 
