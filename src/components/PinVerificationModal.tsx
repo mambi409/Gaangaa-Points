@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ShieldCheck, Lock, X, AlertCircle, KeyRound, Eye, EyeOff } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 interface PinVerificationModalProps {
   isOpen: boolean;
@@ -16,17 +17,22 @@ export const PinVerificationModal: React.FC<PinVerificationModalProps> = ({
   isOpen,
   onClose,
   onVerifySuccess,
-  title = 'Verify 5-Digit Security PIN',
-  description = 'Please enter your 5-digit PIN code to verify and commit this important transaction.',
-  actionButtonText = 'Confirm & Authorize Transaction',
+  title,
+  description,
+  actionButtonText,
   userPinCode,
   username
 }) => {
+  const { t, language } = useLanguage();
   const [pinDigits, setPinDigits] = useState<string[]>(['', '', '', '', '']);
   const [showPin, setShowPin] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [isVerifying, setIsVerifying] = useState(false);
   const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+
+  const modalTitle = title || t('pin_modal.title');
+  const modalDesc = description || t('pin_modal.desc');
+  const confirmBtnText = actionButtonText || t('pin_modal.btn_confirm');
 
   useEffect(() => {
     if (isOpen) {
@@ -81,7 +87,7 @@ export const PinVerificationModal: React.FC<PinVerificationModalProps> = ({
     const enteredPin = pinDigits.join('');
 
     if (enteredPin.length !== 5) {
-      setErrorMsg('Please enter all 5 digits of your PIN code.');
+      setErrorMsg(language === 'es' ? 'Por favor ingresa los 5 dígitos de tu código PIN.' : 'Please enter all 5 digits of your PIN code.');
       return;
     }
 
@@ -110,13 +116,13 @@ export const PinVerificationModal: React.FC<PinVerificationModalProps> = ({
         onClose();
       } else {
         setIsVerifying(false);
-        setErrorMsg('Incorrect 5-digit Security PIN code. Please try again.');
+        setErrorMsg(t('pin_modal.error_invalid'));
         setPinDigits(['', '', '', '', '']);
         inputRefs.current[0]?.focus();
       }
     } catch (err) {
       setIsVerifying(false);
-      setErrorMsg('Verification error. Please check your network connection.');
+      setErrorMsg(language === 'es' ? 'Error de verificación de red.' : 'Verification error. Please check your network connection.');
     }
   };
 
@@ -125,7 +131,7 @@ export const PinVerificationModal: React.FC<PinVerificationModalProps> = ({
       <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 relative">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -135,10 +141,10 @@ export const PinVerificationModal: React.FC<PinVerificationModalProps> = ({
             <Lock className="w-7 h-7" />
           </div>
           <h3 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-            {title}
+            {modalTitle}
           </h3>
           <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-400 leading-relaxed max-w-xs mx-auto">
-            {description}
+            {modalDesc}
           </p>
         </div>
 
@@ -153,15 +159,15 @@ export const PinVerificationModal: React.FC<PinVerificationModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                <KeyRound className="w-3.5 h-3.5 text-amber-500" /> Enter 5-Digit PIN
+                <KeyRound className="w-3.5 h-3.5 text-amber-500" /> {t('pin_modal.enter_digits')}
               </label>
               <button
                 type="button"
                 onClick={() => setShowPin(!showPin)}
-                className="text-[11px] font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1"
+                className="text-[11px] font-bold text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 flex items-center gap-1 cursor-pointer"
               >
                 {showPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                <span>{showPin ? 'Hide PIN' : 'Show Digits'}</span>
+                <span>{showPin ? (language === 'es' ? 'Ocultar PIN' : 'Hide PIN') : (language === 'es' ? 'Mostrar Dígitos' : 'Show Digits')}</span>
               </button>
             </div>
 
@@ -192,7 +198,7 @@ export const PinVerificationModal: React.FC<PinVerificationModalProps> = ({
               className="w-full py-3.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-slate-950 font-extrabold text-sm rounded-xl transition shadow-md shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <ShieldCheck className="w-4 h-4" />
-              <span>{isVerifying ? 'Verifying PIN...' : actionButtonText}</span>
+              <span>{isVerifying ? (language === 'es' ? 'Verificando PIN...' : 'Verifying PIN...') : confirmBtnText}</span>
             </button>
 
             <button
@@ -200,7 +206,7 @@ export const PinVerificationModal: React.FC<PinVerificationModalProps> = ({
               onClick={onClose}
               className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
             >
-              Cancel Transaction
+              {t('pin_modal.btn_cancel')}
             </button>
           </div>
         </form>

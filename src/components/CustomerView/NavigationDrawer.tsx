@@ -14,6 +14,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { NavigationRoute, Store } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface NavigationDrawerProps {
   route: NavigationRoute | null;
@@ -30,6 +31,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
   onChangeMode,
   onArrivedPush
 }) => {
+  const { t, language } = useLanguage();
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isSimulating, setIsSimulating] = useState(false);
   const [simProgress, setSimProgress] = useState(0);
@@ -81,10 +83,10 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-extrabold uppercase tracking-widest text-indigo-400">
-                  Real-Time GPS Guidance
+                  {language === 'es' ? 'Guía GPS en Tiempo Real' : 'Real-Time GPS Guidance'}
                 </span>
                 <span className="text-[10px] font-bold bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-full">
-                  Live Route
+                  {language === 'es' ? 'Ruta en Vivo' : 'Live Route'}
                 </span>
               </div>
               <h3 className="text-lg font-extrabold text-white">{store.name}</h3>
@@ -96,28 +98,28 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             <div className="flex items-center bg-slate-800 p-1 rounded-xl border border-slate-700">
               <button
                 onClick={() => onChangeMode('walking')}
-                className={`p-2 rounded-lg transition ${
+                className={`p-2 rounded-lg transition cursor-pointer ${
                   route.mode === 'walking' ? 'bg-indigo-600 text-white' : 'text-slate-400'
                 }`}
-                title="Walking"
+                title={language === 'es' ? 'Caminando' : 'Walking'}
               >
                 <Footprints className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onChangeMode('driving')}
-                className={`p-2 rounded-lg transition ${
+                className={`p-2 rounded-lg transition cursor-pointer ${
                   route.mode === 'driving' ? 'bg-indigo-600 text-white' : 'text-slate-400'
                 }`}
-                title="Driving"
+                title={language === 'es' ? 'En Auto' : 'Driving'}
               >
                 <Car className="w-4 h-4" />
               </button>
               <button
                 onClick={() => onChangeMode('biking')}
-                className={`p-2 rounded-lg transition ${
+                className={`p-2 rounded-lg transition cursor-pointer ${
                   route.mode === 'biking' ? 'bg-indigo-600 text-white' : 'text-slate-400'
                 }`}
-                title="Biking"
+                title={language === 'es' ? 'En Bicicleta' : 'Biking'}
               >
                 <Bike className="w-4 h-4" />
               </button>
@@ -125,7 +127,7 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
 
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition"
+              className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -135,20 +137,26 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
         {/* Route Overview Metrics Bar */}
         <div className="grid grid-cols-3 gap-3 mb-4 bg-slate-950 p-3 rounded-2xl border border-slate-800 text-center">
           <div>
-            <div className="text-[10px] text-slate-400 uppercase font-semibold">Distance</div>
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">
+              {t('map.distance')}
+            </div>
             <div className="text-lg font-extrabold text-indigo-300">
               {Math.max(0, route.distanceKm * (1 - simProgress / 100)).toFixed(2)} km
             </div>
           </div>
           <div>
-            <div className="text-[10px] text-slate-400 uppercase font-semibold">Est. Travel Time</div>
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">
+              {language === 'es' ? 'Tiempo Estimado' : 'Est. Travel Time'}
+            </div>
             <div className="text-lg font-extrabold text-emerald-400">
               {Math.max(1, Math.round(route.durationMinutes * (1 - simProgress / 100)))} min
             </div>
           </div>
           <div>
-            <div className="text-[10px] text-slate-400 uppercase font-semibold">Store Points Rate</div>
-            <div className="text-lg font-extrabold text-amber-300">{store.pointsRate} pts/Cg</div>
+            <div className="text-[10px] text-slate-400 uppercase font-semibold">
+              {language === 'es' ? 'Tasa de Puntos' : 'Store Points Rate'}
+            </div>
+            <div className="text-lg font-extrabold text-amber-300">{store.pointsRate} {t('stores.points_rate')}</div>
           </div>
         </div>
 
@@ -158,10 +166,10 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
             <Compass className="w-4 h-4 text-indigo-400 animate-spin" />
             <span>
               {simProgress === 100
-                ? 'Arrived at Store! Check in at counter to earn points.'
+                ? language === 'es' ? '¡Llegaste a la tienda! Regístrate en el mostrador para ganar puntos.' : 'Arrived at Store! Check in at counter to earn points.'
                 : isSimulating
-                ? `Moving towards ${store.name}... (${simProgress}%)`
-                : 'Ready to start live simulation along route?'}
+                ? language === 'es' ? `Avanzando hacia ${store.name}... (${simProgress}%)` : `Moving towards ${store.name}... (${simProgress}%)`
+                : language === 'es' ? '¿Listo para iniciar la simulación en ruta?' : 'Ready to start live simulation along route?'}
             </span>
           </div>
 
@@ -173,17 +181,17 @@ export const NavigationDrawer: React.FC<NavigationDrawerProps> = ({
               }
               setIsSimulating(!isSimulating);
             }}
-            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shrink-0 transition"
+            className="px-4 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 shadow-md shrink-0 transition cursor-pointer"
           >
             {simProgress === 100 ? (
               <>
-                <RotateCcw className="w-3.5 h-3.5" /> Restart
+                <RotateCcw className="w-3.5 h-3.5" /> {language === 'es' ? 'Reiniciar' : 'Restart'}
               </>
             ) : isSimulating ? (
-              'Pause Simulation'
+              language === 'es' ? 'Pausar Simulación' : 'Pause Simulation'
             ) : (
               <>
-                <Play className="w-3.5 h-3.5" /> Simulate Walk
+                <Play className="w-3.5 h-3.5" /> {language === 'es' ? 'Simular Ruta' : 'Simulate Walk'}
               </>
             )}
           </button>

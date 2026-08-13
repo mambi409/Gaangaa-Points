@@ -14,6 +14,7 @@ import {
   ChevronRight
 } from 'lucide-react';
 import { Store, MerchantStats, RewardItem, Transaction } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface MerchantDashboardProps {
   stores: Store[];
@@ -32,6 +33,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   onOpenAddReward,
   onOpenPushBroadcaster
 }) => {
+  const { t, language } = useLanguage();
   const [stats, setStats] = useState<MerchantStats | null>(null);
   const [storeRewards, setStoreRewards] = useState<RewardItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -67,7 +69,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
-                Merchant Partner Dashboard
+                {language === 'es' ? 'Panel de Comercio Asociado' : 'Merchant Partner Dashboard'}
               </span>
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
             </div>
@@ -81,7 +83,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           <div className="space-y-1 w-full sm:w-auto">
             <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
-              Active Store Outlet
+              {language === 'es' ? 'Sucursal Activa' : 'Active Store Outlet'}
             </label>
             <select
               value={activeStore.id}
@@ -98,10 +100,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
           <button
             onClick={onOpenPOSTerminal}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition flex items-center gap-2 shadow-xs shadow-blue-200 self-end"
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition flex items-center gap-2 shadow-xs shadow-blue-200 self-end cursor-pointer"
           >
             <Scan className="w-4 h-4" />
-            Scan Member QR
+            {language === 'es' ? 'Escanear QR Miembro' : 'Scan Member QR'}
           </button>
         </div>
       </div>
@@ -111,56 +113,64 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         {/* Points Issued */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Points Issued Today</span>
+            <span className="text-xs font-bold uppercase tracking-wider">
+              {language === 'es' ? 'Puntos Emitidos Hoy' : 'Points Issued Today'}
+            </span>
             <Award className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900">
             +{stats?.todayPointsIssued.toLocaleString() || '3,850'} pts
           </div>
           <div className="inline-block text-[11px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-md mt-2">
-            ↑ 14% higher than yesterday
+            {language === 'es' ? '↑ 14% más que ayer' : '↑ 14% higher than yesterday'}
           </div>
         </div>
 
         {/* Points Redeemed */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Redemptions Today</span>
+            <span className="text-xs font-bold uppercase tracking-wider">
+              {language === 'es' ? 'Canjes Hoy' : 'Redemptions Today'}
+            </span>
             <Tag className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900">
             {stats?.todayPointsRedeemed.toLocaleString() || '1,500'} pts
           </div>
           <div className="inline-block text-[11px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-md mt-2">
-            {storeRewards.length} active store reward offers
+            {storeRewards.length} {language === 'es' ? 'ofertas activas' : 'active store reward offers'}
           </div>
         </div>
 
         {/* Total Checkout Revenue */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Loyalty Sales Volume</span>
+            <span className="text-xs font-bold uppercase tracking-wider">
+              {language === 'es' ? 'Volumen de Ventas Fidelidad' : 'Loyalty Sales Volume'}
+            </span>
             <DollarSign className="w-4 h-4 text-emerald-600" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900">
             Cg {stats?.todayRevenueEstimate.toFixed(2) || '485.00'}
           </div>
           <div className="inline-block text-[11px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md mt-2">
-            {stats?.todayTransactions || 42} checkouts logged
+            {stats?.todayTransactions || 42} {language === 'es' ? 'compras registradas' : 'checkouts logged'}
           </div>
         </div>
 
         {/* Active Members */}
         <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">Active Store Members</span>
+            <span className="text-xs font-bold uppercase tracking-wider">
+              {language === 'es' ? 'Miembros Activos de Tienda' : 'Active Store Members'}
+            </span>
             <Users className="w-4 h-4 text-blue-600" />
           </div>
           <div className="text-2xl font-extrabold text-slate-900">
-            {stats?.activeMembersCount || 312} members
+            {stats?.activeMembersCount || 312} {language === 'es' ? 'miembros' : 'members'}
           </div>
           <div className="inline-block text-[11px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md mt-2">
-            Repeated visits this month
+            {language === 'es' ? 'Visitas recurrentes este mes' : 'Repeated visits this month'}
           </div>
         </div>
       </div>
@@ -169,49 +179,61 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <button
           onClick={onOpenPOSTerminal}
-          className="p-6 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group"
+          className="p-6 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
         >
           <div className="p-3 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 w-fit mb-4">
             <Scan className="w-6 h-6 group-hover:scale-105 transition" />
           </div>
-          <h3 className="font-extrabold text-lg text-slate-900">POS Member Checkout</h3>
+          <h3 className="font-extrabold text-lg text-slate-900">
+            {language === 'es' ? 'Terminal POS de Cobro' : 'POS Member Checkout'}
+          </h3>
           <p className="text-xs text-slate-600 mt-1">
-            Scan member pass QR code, credit points on sale, or process voucher redemptions.
+            {language === 'es'
+              ? 'Escanea el pase QR del miembro, acredita puntos en compras o procesa canjes de cupones.'
+              : 'Scan member pass QR code, credit points on sale, or process voucher redemptions.'}
           </p>
           <div className="mt-4 flex items-center gap-1 text-xs font-bold text-blue-600">
-            Launch POS Terminal <ChevronRight className="w-4 h-4" />
+            {language === 'es' ? 'Abrir Terminal POS' : 'Launch POS Terminal'} <ChevronRight className="w-4 h-4" />
           </div>
         </button>
 
         <button
           onClick={onOpenAddReward}
-          className="p-6 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group"
+          className="p-6 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
         >
           <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 w-fit mb-4">
             <Plus className="w-6 h-6 group-hover:scale-105 transition" />
           </div>
-          <h3 className="font-extrabold text-lg text-slate-900">Create Reward Offer</h3>
+          <h3 className="font-extrabold text-lg text-slate-900">
+            {language === 'es' ? 'Crear Oferta de Recompensa' : 'Create Reward Offer'}
+          </h3>
           <p className="text-xs text-slate-600 mt-1">
-            Add new discount vouchers, free items, or tier rewards with Gemini AI copywriter.
+            {language === 'es'
+              ? 'Agrega cupones de descuento, artículos de cortesía o recompensas por nivel con redactor de IA.'
+              : 'Add new discount vouchers, free items, or tier rewards with Gemini AI copywriter.'}
           </p>
           <div className="mt-4 flex items-center gap-1 text-xs font-bold text-emerald-600">
-            Add Store Reward <ChevronRight className="w-4 h-4" />
+            {language === 'es' ? 'Agregar Recompensa' : 'Add Store Reward'} <ChevronRight className="w-4 h-4" />
           </div>
         </button>
 
         <button
           onClick={onOpenPushBroadcaster}
-          className="p-6 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group"
+          className="p-6 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
         >
           <div className="p-3 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 w-fit mb-4">
             <Send className="w-6 h-6 group-hover:scale-105 transition" />
           </div>
-          <h3 className="font-extrabold text-lg text-slate-900">Broadcast Push Alert</h3>
+          <h3 className="font-extrabold text-lg text-slate-900">
+            {language === 'es' ? 'Emitir Notificación Push' : 'Broadcast Push Alert'}
+          </h3>
           <p className="text-xs text-slate-600 mt-1">
-            Send real-time mobile push notifications to nearby visitors or gold members.
+            {language === 'es'
+              ? 'Envía notificaciones push en tiempo real a visitantes cercanos o miembros VIP.'
+              : 'Send real-time mobile push notifications to nearby visitors or gold members.'}
           </p>
           <div className="mt-4 flex items-center gap-1 text-xs font-bold text-amber-600">
-            Send Push Campaign <ChevronRight className="w-4 h-4" />
+            {language === 'es' ? 'Enviar Notificación' : 'Send Push Campaign'} <ChevronRight className="w-4 h-4" />
           </div>
         </button>
       </div>
@@ -222,18 +244,20 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           <div className="flex items-center justify-between mb-6">
             <div>
               <h3 className="font-extrabold text-slate-900 text-lg">
-                Weekly Loyalty Volume
+                {language === 'es' ? 'Volumen Semanal de Puntos' : 'Weekly Loyalty Volume'}
               </h3>
               <p className="text-xs text-slate-500">
-                Points issued vs points redeemed at {activeStore.name}
+                {language === 'es'
+                  ? `Puntos emitidos vs canjeados en ${activeStore.name}`
+                  : `Points issued vs points redeemed at ${activeStore.name}`}
               </p>
             </div>
             <div className="flex items-center gap-4 text-xs font-bold">
               <span className="flex items-center gap-1.5 text-blue-700">
-                <span className="w-3 h-3 rounded-xs bg-blue-600" /> Points Issued
+                <span className="w-3 h-3 rounded-xs bg-blue-600" /> {language === 'es' ? 'Puntos Emitidos' : 'Points Issued'}
               </span>
               <span className="flex items-center gap-1.5 text-slate-600">
-                <span className="w-3 h-3 rounded-xs bg-slate-400" /> Redeemed
+                <span className="w-3 h-3 rounded-xs bg-slate-400" /> {language === 'es' ? 'Canjeados' : 'Redeemed'}
               </span>
             </div>
           </div>
@@ -272,20 +296,22 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs">
           <div className="flex items-center justify-between mb-4">
             <h3 className="font-extrabold text-slate-900 text-base">
-              Active Store Rewards Catalog
+              {language === 'es' ? 'Catálogo de Recompensas de la Tienda' : 'Active Store Rewards Catalog'}
             </h3>
             <button
               onClick={onOpenAddReward}
-              className="text-xs font-bold text-blue-600 hover:underline"
+              className="text-xs font-bold text-blue-600 hover:underline cursor-pointer"
             >
-              + Add Offer
+              {language === 'es' ? '+ Agregar Oferta' : '+ Add Offer'}
             </button>
           </div>
 
           <div className="space-y-3">
             {storeRewards.length === 0 ? (
               <div className="text-xs text-slate-400 text-center py-8">
-                No active rewards yet for this store location.
+                {language === 'es'
+                  ? 'Aún no hay recompensas activas para esta tienda.'
+                  : 'No active rewards yet for this store location.'}
               </div>
             ) : (
               storeRewards.map((reward) => (
@@ -298,7 +324,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
                       {reward.title}
                     </h4>
                     <p className="text-[11px] text-slate-500 mt-0.5">
-                      {reward.discountValue} • Code: {reward.code}
+                      {reward.discountValue} • {language === 'es' ? 'Código:' : 'Code:'} {reward.code}
                     </p>
                   </div>
                   <span className="text-xs font-extrabold text-blue-700 bg-blue-50 border border-blue-200 px-2.5 py-1 rounded-lg">
@@ -313,7 +339,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         {/* Recent In-Store Customer Transactions */}
         <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs">
           <h3 className="font-extrabold text-slate-900 text-base mb-4">
-            Recent In-Store Checkouts
+            {language === 'es' ? 'Cobros Recientes en Tienda' : 'Recent In-Store Checkouts'}
           </h3>
 
           <div className="space-y-3 divide-y divide-slate-100">

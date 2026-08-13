@@ -1,4 +1,5 @@
 export type UserTier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
+export type UserRole = 'user' | 'merchant' | 'admin';
 
 export interface Store {
   id: string;
@@ -140,3 +141,44 @@ export interface AIPerksResponse {
   }[];
   generatedPromo?: string;
 }
+
+export interface AdminTask {
+  id: string;
+  name: string;
+  description: string;
+  category: 'accounting' | 'security' | 'database' | 'maintenance';
+  status: 'idle' | 'running' | 'completed' | 'failed';
+  lastRun?: string;
+  durationMs?: number;
+  successMessage?: string;
+  frequency?: string;
+  metrics?: Record<string, any>;
+}
+
+export interface SystemAuditLog {
+  id: string;
+  timestamp: string;
+  taskId?: string;
+  title: string;
+  type: 'task_exec' | 'security' | 'adjustment' | 'system';
+  severity: 'info' | 'success' | 'warning' | 'error';
+  details: string;
+  user?: string;
+}
+
+export interface AdminOverviewStats {
+  totalUsers: number;
+  totalStores: number;
+  totalRewards: number;
+  totalTransactions: number;
+  totalPointsIssued: number;
+  totalPointsRedeemed: number;
+  totalEstRevenue: number;
+  firestoreStatus: {
+    connected: boolean;
+    mode: string;
+    lastSync: string;
+    collectionsCount: number;
+  };
+}
+

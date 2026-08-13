@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Tag, X, Sparkles, Plus, Award } from 'lucide-react';
 import { Store, RewardItem } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface RewardCatalogManagerProps {
   isOpen: boolean;
@@ -16,10 +17,11 @@ export const RewardCatalogManager: React.FC<RewardCatalogManagerProps> = ({
   activeStore,
   onAddReward
 }) => {
+  const { t, language } = useLanguage();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [pointsCost, setPointsCost] = useState('300');
-  const [discountValue, setDiscountValue] = useState('Cg 8.00 Value');
+  const [discountValue, setDiscountValue] = useState(language === 'es' ? 'Valor Cg 8.00' : 'Cg 8.00 Value');
   const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -32,7 +34,7 @@ export const RewardCatalogManager: React.FC<RewardCatalogManagerProps> = ({
         body: JSON.stringify({
           queryType: 'merchant_promo_copy',
           storeContext: activeStore,
-          promptText: title || 'Free specialty item'
+          promptText: title || (language === 'es' ? 'Artículo especial gratuito' : 'Free specialty item')
         })
       });
       const data = await res.json();
@@ -55,7 +57,7 @@ export const RewardCatalogManager: React.FC<RewardCatalogManagerProps> = ({
       await onAddReward({
         storeId: activeStore.id,
         title,
-        description: description || 'Special merchant loyalty reward offer.',
+        description: description || (language === 'es' ? 'Oferta especial de recompensa de lealtad.' : 'Special merchant loyalty reward offer.'),
         pointsCost: parseInt(pointsCost, 10),
         discountValue,
         category: activeStore.category
@@ -95,14 +97,14 @@ export const RewardCatalogManager: React.FC<RewardCatalogManagerProps> = ({
               </div>
               <div>
                 <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-lg">
-                  New Reward Offer Builder
+                  {language === 'es' ? 'Creador de Ofertas y Recompensas' : 'New Reward Offer Builder'}
                 </h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">{activeStore.name}</p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition"
+              className="p-2 rounded-xl text-slate-400 hover:text-slate-900 dark:hover:text-slate-100 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -111,14 +113,14 @@ export const RewardCatalogManager: React.FC<RewardCatalogManagerProps> = ({
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                Reward Title
+                {language === 'es' ? 'Título de la Recompensa' : 'Reward Title'}
               </label>
               <input
                 type="text"
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="e.g. Free Artisanal Muffin or Cold Brew"
+                placeholder={language === 'es' ? 'ej. Muffin Artesanal o Café Helado Gratis' : 'e.g. Free Artisanal Muffin or Cold Brew'}
                 className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
               />
             </div>
@@ -126,7 +128,7 @@ export const RewardCatalogManager: React.FC<RewardCatalogManagerProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Points Cost
+                  {language === 'es' ? 'Costo en Puntos' : 'Points Cost'}
                 </label>
                 <input
                   type="number"
@@ -139,13 +141,13 @@ export const RewardCatalogManager: React.FC<RewardCatalogManagerProps> = ({
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Discount Value Badge
+                  {language === 'es' ? 'Insignia de Valor de Descuento' : 'Discount Value Badge'}
                 </label>
                 <input
                   type="text"
                   value={discountValue}
                   onChange={(e) => setDiscountValue(e.target.value)}
-                  placeholder="e.g. Cg 8.00 Value"
+                  placeholder={language === 'es' ? 'ej. Valor Cg 8.00' : 'e.g. Cg 8.00 Value'}
                   className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500"
                 />
               </div>
@@ -154,23 +156,25 @@ export const RewardCatalogManager: React.FC<RewardCatalogManagerProps> = ({
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300">
-                  Reward Offer Description
+                  {language === 'es' ? 'Descripción de la Recompensa' : 'Reward Offer Description'}
                 </label>
                 <button
                   type="button"
                   onClick={handleGenerateAICopy}
                   disabled={isGeneratingAI}
-                  className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1"
+                  className="text-[10px] font-extrabold text-indigo-600 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
                 >
                   <Sparkles className="w-3 h-3 text-amber-400" />
-                  {isGeneratingAI ? 'Gemini Writing...' : 'Write Copy with Gemini AI'}
+                  {isGeneratingAI
+                    ? (language === 'es' ? 'Gemini Escribiendo...' : 'Gemini Writing...')
+                    : (language === 'es' ? 'Redactar con Gemini AI' : 'Write Copy with Gemini AI')}
                 </button>
               </div>
               <textarea
                 rows={3}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Details on redemption conditions and customer perks..."
+                placeholder={language === 'es' ? 'Detalles sobre condiciones de canje y beneficios para clientes...' : 'Details on redemption conditions and customer perks...'}
                 className="w-full px-4 py-3 rounded-2xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-900 dark:text-slate-100 focus:outline-hidden focus:ring-2 focus:ring-emerald-500 resize-none"
               />
             </div>
@@ -178,10 +182,12 @@ export const RewardCatalogManager: React.FC<RewardCatalogManagerProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl text-xs transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-2xl text-xs transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Plus className="w-4 h-4" />
-              {isSubmitting ? 'Publishing Reward...' : 'Publish Reward to Customer App'}
+              {isSubmitting
+                ? (language === 'es' ? 'Publicando Recompensa...' : 'Publishing Reward...')
+                : (language === 'es' ? 'Publicar Recompensa en la App' : 'Publish Reward to Customer App')}
             </button>
           </form>
         </motion.div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Scan, X, QrCode, CheckCircle2, Sparkles, Camera, Award } from 'lucide-react';
 import { Store } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface ScanEarnModalProps {
   isOpen: boolean;
@@ -18,6 +19,7 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
   onEarnPoints,
   onScanQRCheckIn
 }) => {
+  const { t, language } = useLanguage();
   const [activeTab, setActiveTab] = useState<'qr_checkin' | 'receipt'>('qr_checkin');
   const [selectedStoreId, setSelectedStoreId] = useState(stores[0]?.id || '');
   const [purchaseAmount, setPurchaseAmount] = useState('24.50');
@@ -36,7 +38,7 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
       if (onScanQRCheckIn) {
         await onScanQRCheckIn(selectedStoreId);
       }
-      setSuccessMsg(`🎉 +1 Point Credited via QR Code Scan!`);
+      setSuccessMsg(language === 'es' ? '🎉 ¡+1 Punto acreditado mediante escaneo QR!' : '🎉 +1 Point Credited via QR Code Scan!');
       setTimeout(() => {
         setSuccessMsg('');
         setIsSubmitting(false);
@@ -55,7 +57,7 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
     setIsSubmitting(true);
     try {
       await onEarnPoints(selectedStoreId, amount, itemNote || `In-store purchase at ${activeStore.name}`);
-      setSuccessMsg(`+${calculatedPoints} Points Credited!`);
+      setSuccessMsg(language === 'es' ? `¡+${calculatedPoints} Puntos Acreditados!` : `+${calculatedPoints} Points Credited!`);
       setTimeout(() => {
         setSuccessMsg('');
         setIsSubmitting(false);
@@ -93,16 +95,16 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
               </div>
               <div>
                 <h3 className="font-extrabold text-slate-900 text-base">
-                  In-Store Point Collector
+                  {language === 'es' ? 'Recolector de Puntos en Tienda' : 'In-Store Point Collector'}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  Scan store QR posters or credit purchases
+                  {language === 'es' ? 'Escanea códigos QR o acredita compras con recibos' : 'Scan store QR posters or credit purchases'}
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -113,26 +115,26 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
             <button
               type="button"
               onClick={() => setActiveTab('qr_checkin')}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'qr_checkin'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <QrCode className="w-3.5 h-3.5" />
-              Scan QR (+1 Pt)
+              {language === 'es' ? 'Escanear QR (+1 Pt)' : 'Scan QR (+1 Pt)'}
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('receipt')}
-              className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-2 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 activeTab === 'receipt'
                   ? 'bg-blue-600 text-white shadow-xs'
                   : 'text-slate-600 hover:text-slate-900'
               }`}
             >
               <Award className="w-3.5 h-3.5" />
-              Receipt Credit
+              {language === 'es' ? 'Acreditar Recibo' : 'Receipt Credit'}
             </button>
           </div>
 
@@ -143,7 +145,7 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
                 {successMsg}
               </h4>
               <p className="text-xs text-slate-500">
-                Points have been added to your digital wallet!
+                {language === 'es' ? '¡Los puntos han sido agregados a tu billetera digital!' : 'Points have been added to your digital wallet!'}
               </p>
             </div>
           ) : activeTab === 'qr_checkin' ? (
@@ -151,7 +153,7 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
             <div className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">
-                  Select Merchant Outlet
+                  {language === 'es' ? 'Seleccionar Tienda Comercial' : 'Select Merchant Outlet'}
                 </label>
                 <select
                   value={selectedStoreId}
@@ -178,10 +180,10 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
                     <Camera className="w-6 h-6 text-blue-300" />
                   </div>
                   <div className="font-extrabold text-sm text-white">
-                    Scanning {activeStore.name} Poster
+                    {language === 'es' ? `Escaneando Póster de ${activeStore.name}` : `Scanning ${activeStore.name} Poster`}
                   </div>
                   <p className="text-[11px] text-slate-300 max-w-xs mx-auto">
-                    Point your camera at the in-store QR code poster at the counter or entrance.
+                    {language === 'es' ? 'Apunta tu cámara al póster con código QR en el mostrador o entrada de la tienda.' : 'Point your camera at the in-store QR code poster at the counter or entrance.'}
                   </p>
                 </div>
               </div>
@@ -190,7 +192,11 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
               <div className="p-3 bg-blue-50 rounded-xl border border-blue-200 text-xs text-blue-900 flex items-center gap-2.5">
                 <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
                 <span className="font-semibold">
-                  Receive <strong>1 instant loyalty point</strong> just for scanning the merchant QR code on arrival!
+                  {language === 'es' ? (
+                    <>¡Recibe <strong>1 punto de lealtad al instante</strong> solo por escanear el código QR del comercio al llegar!</>
+                  ) : (
+                    <>Receive <strong>1 instant loyalty point</strong> just for scanning the merchant QR code on arrival!</>
+                  )}
                 </span>
               </div>
 
@@ -198,10 +204,12 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
                 type="button"
                 onClick={handleQRCheckIn}
                 disabled={isSubmitting}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg text-xs transition shadow-xs flex items-center justify-center gap-2"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg text-xs transition shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 <QrCode className="w-4 h-4" />
-                {isSubmitting ? 'Scanning & Claiming Point...' : 'Scan In-Store QR Code (+1 Pt)'}
+                {isSubmitting
+                  ? (language === 'es' ? 'Escaneando y Reclamando Punto...' : 'Scanning & Claiming Point...')
+                  : (language === 'es' ? 'Escanear Código QR en Tienda (+1 Pt)' : 'Scan In-Store QR Code (+1 Pt)')}
               </button>
             </div>
           ) : (
@@ -209,7 +217,7 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
             <form onSubmit={handleReceiptSubmit} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">
-                  Select Retail Store
+                  {language === 'es' ? 'Seleccionar Tienda Comercial' : 'Select Retail Store'}
                 </label>
                 <select
                   value={selectedStoreId}
@@ -218,7 +226,7 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
                 >
                   {stores.map((s) => (
                     <option key={s.id} value={s.id}>
-                      {s.name} ({s.pointsRate} pts/Cg)
+                      {s.name} ({s.pointsRate} {t('stores.points_rate')})
                     </option>
                   ))}
                 </select>
@@ -226,7 +234,7 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">
-                  Purchase Amount (Cg)
+                  {language === 'es' ? 'Monto de Compra (Cg)' : 'Purchase Amount (Cg)'}
                 </label>
                 <div className="relative">
                   <span className="absolute left-3 py-0.5 px-1 bg-slate-200 text-slate-600 rounded-xs top-1/2 -translate-y-1/2 font-bold text-xs">
@@ -244,13 +252,13 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
 
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700">
-                  Items Purchased (Optional)
+                  {language === 'es' ? 'Artículos Comprados (Opcional)' : 'Items Purchased (Optional)'}
                 </label>
                 <input
                   type="text"
                   value={itemNote}
                   onChange={(e) => setItemNote(e.target.value)}
-                  placeholder="e.g. Espresso, Apparel, Groceries"
+                  placeholder={language === 'es' ? 'ej. Café, Ropa, Abarrotes' : 'e.g. Espresso, Apparel, Groceries'}
                   className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-900 focus:outline-hidden"
                 />
               </div>
@@ -258,10 +266,10 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
               <div className="p-3 bg-slate-50 rounded-lg border border-slate-200 flex items-center justify-between text-xs">
                 <div>
                   <div className="text-[10px] uppercase font-bold tracking-wider text-slate-500">
-                    Estimated Points
+                    {language === 'es' ? 'Puntos Estimados' : 'Estimated Points'}
                   </div>
                   <div className="font-bold text-slate-800">
-                    {activeStore.pointsRate} pts per Cg 1 spent
+                    {activeStore.pointsRate} {t('stores.points_rate')}
                   </div>
                 </div>
                 <div className="text-right">
@@ -275,10 +283,12 @@ export const ScanEarnModal: React.FC<ScanEarnModalProps> = ({
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg text-xs transition shadow-xs flex items-center justify-center gap-2"
+                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-lg text-xs transition shadow-xs flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Award className="w-4 h-4" />
-                {isSubmitting ? 'Processing Credit...' : 'Confirm Receipt & Earn Points'}
+                {isSubmitting
+                  ? (language === 'es' ? 'Procesando Crédito...' : 'Processing Credit...')
+                  : (language === 'es' ? 'Confirmar Recibo y Ganar Puntos' : 'Confirm Receipt & Earn Points')}
               </button>
             </form>
           )}

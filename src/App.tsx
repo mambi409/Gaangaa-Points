@@ -12,6 +12,7 @@ import { MerchantDashboard } from './components/MerchantView/MerchantDashboard';
 import { POSScannerTerminal } from './components/MerchantView/POSScannerTerminal';
 import { RewardCatalogManager } from './components/MerchantView/RewardCatalogManager';
 import { PushNotificationBroadcaster } from './components/MerchantView/PushNotificationBroadcaster';
+import { AdminDashboard } from './components/AdminDashboard';
 import { LoginModal } from './components/LoginModal';
 import { PinVerificationModal } from './components/PinVerificationModal';
 import { ProfileModal } from './components/ProfileModal';
@@ -22,13 +23,22 @@ import {
   UserWallet,
   Transaction,
   NotificationMessage,
-  NavigationRoute
+  NavigationRoute,
+  UserRole
 } from './types';
 import { INITIAL_WALLET, INITIAL_USER_LOCATION } from './data/mockData';
 
 export default function App() {
   // Authentication State
-  const [authUser, setAuthUser] = useState<{ username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' } | null>(() => {
+  const [authUser, setAuthUser] = useState<{
+    username: string;
+    name: string;
+    email?: string;
+    passId: string;
+    pinCode?: string;
+    token: string;
+    role?: 'user' | 'merchant' | 'admin';
+  } | null>(() => {
     try {
       const saved = localStorage.getItem('omni_auth_user');
       return saved ? JSON.parse(saved) : null;
@@ -37,9 +47,16 @@ export default function App() {
     }
   });
 
-  const [currentRole, setCurrentRole] = useState<'user' | 'merchant'>(
-    authUser?.role === 'merchant' ? 'merchant' : 'user'
-  );
+  const [currentRole, setCurrentRole] = useState<'user' | 'merchant' | 'admin'>(() => {
+    if (authUser?.role === 'admin' || authUser?.username?.toLowerCase() === 'mambiadmin') {
+      return 'admin';
+    }
+    if (authUser?.role === 'merchant') {
+      return 'merchant';
+    }
+    return 'user';
+  });
+
   const [activeView, setActiveView] = useState<'home' | 'wallet' | 'explore' | 'map'>(
     authUser ? (authUser.role === 'merchant' ? 'wallet' : 'wallet') : 'home'
   );
@@ -47,7 +64,7 @@ export default function App() {
   // Login Modal state
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
   const [loginModalMode, setLoginModalMode] = useState<'login' | 'register'>('login');
-  const [loginModalRole, setLoginModalRole] = useState<'user' | 'merchant'>('user');
+  const [loginModalRole, setLoginModalRole] = useState<'user' | 'merchant' | 'admin'>('user');
 
   // Application State
   const [wallet, setWallet] = useState<UserWallet>(INITIAL_WALLET);
@@ -103,7 +120,7 @@ export default function App() {
   };
 
   // Auth Open Modal Handler
-  const handleOpenAuth = (role: 'user' | 'merchant' = 'user', mode: 'login' | 'register' = 'login') => {
+  const handleOpenAuth = (role: 'user' | 'merchant' | 'admin' = 'user', mode: 'login' | 'register' = 'login') => {
     setLoginModalRole(role);
     setLoginModalMode(mode);
     setIsLoginModalOpen(true);
@@ -111,8 +128,8 @@ export default function App() {
 
   // Auth Callbacks
   const handleLoginSuccess = (
-    user: { username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' },
-    role: 'user' | 'merchant'
+    user: { username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' | 'admin' },
+    role: 'user' | 'merchant' | 'admin'
   ) => {
     const userWithRole = { ...user, role };
     setAuthUser(userWithRole);
@@ -120,7 +137,9 @@ export default function App() {
     setCurrentRole(role);
     setIsLoginModalOpen(false);
 
-    if (role === 'user') {
+    if (role === 'admin') {
+      setCurrentRole('admin');
+    } else if (role === 'user') {
       setActiveView('wallet'); // Customer goes to Digital Wallet page
     } else {
       setCurrentRole('merchant'); // Merchant goes to Merchant Dashboard
@@ -130,6 +149,7 @@ export default function App() {
   const handleLogout = () => {
     setAuthUser(null);
     localStorage.removeItem('omni_auth_user');
+    setCurrentRole('user');
     setActiveView('home'); // Logged out users return to public Home page
     setIsLoginModalOpen(false);
   };
@@ -370,7 +390,7 @@ export default function App() {
     email: string;
     passId: string;
     pinCode: string;
-    role?: 'user' | 'merchant';
+    role?: 'user' | 'merchant' | 'admin';
   }) => {
     setAuthUser((prev) => (prev ? { ...prev, ...updatedUser } : null));
     const current = localStorage.getItem('omni_auth_user');
@@ -460,13 +480,23 @@ export default function App() {
 
       {/* Main Body Content Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-8">
-        {activeView === 'home' ? (
+        {activeView === 'home' && currentRole !== 'admin' ? (
           /* Public Home Landing Page */
           <Home
             stores={stores}
             onOpenMemberAuth={(mode) => handleOpenAuth('user', mode)}
             onOpenMerchantAuth={() => handleOpenAuth('merchant', 'login')}
             onExploreStores={() => setActiveView('explore')}
+          />
+        ) : currentRole === 'admin' ? (
+          /* Central Admin Dashboard View */
+          <AdminDashboard
+            adminUser={authUser}
+            onLogout={handleLogout}
+            onSwitchRole={(r) => {
+              setCurrentRole(r);
+              if (r === 'user') setActiveView('wallet');
+            }}
           />
         ) : currentRole === 'user' ? (
           <>

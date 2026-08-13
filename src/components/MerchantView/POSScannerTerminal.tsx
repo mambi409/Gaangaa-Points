@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Scan, X, CheckCircle2, Award, Tag, Sparkles, AlertCircle, QrCode } from 'lucide-react';
 import { Store } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface POSScannerTerminalProps {
   isOpen: boolean;
@@ -21,6 +22,7 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
   activeStore,
   onProcessScan
 }) => {
+  const { t, language } = useLanguage();
   const [passIdInput, setPassIdInput] = useState('PASS-9842-SF');
   const [actionType, setActionType] = useState<'earn' | 'redeem_voucher' | 'store_poster'>('earn');
   const [saleAmount, setSaleAmount] = useState('32.00');
@@ -47,7 +49,7 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
 
       setResultMsg({ success: res.success, text: res.message });
     } catch (err: any) {
-      setResultMsg({ success: false, text: err.message || 'Scan process failed.' });
+      setResultMsg({ success: false, text: err.message || (language === 'es' ? 'Error al procesar el escaneo.' : 'Scan process failed.') });
     } finally {
       setIsProcessing(false);
     }
@@ -80,16 +82,16 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
               </div>
               <div>
                 <h3 className="font-extrabold text-slate-900 text-base">
-                  Merchant POS Terminal
+                  {language === 'es' ? 'Terminal POS de Comercio' : 'Merchant POS Terminal'}
                 </h3>
                 <p className="text-xs text-slate-500">
-                  {activeStore.name} ({activeStore.pointsRate} pts/Cg)
+                  {activeStore.name} ({activeStore.pointsRate} {t('stores.points_rate')})
                 </p>
               </div>
             </div>
             <button
               onClick={onClose}
-              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition"
+              className="p-1.5 rounded-lg text-slate-400 hover:text-slate-900 hover:bg-slate-100 transition cursor-pointer"
             >
               <X className="w-5 h-5" />
             </button>
@@ -103,16 +105,16 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                 <AlertCircle className="w-16 h-16 text-rose-600 mx-auto" />
               )}
               <h4 className="text-lg font-extrabold text-slate-900">
-                {resultMsg.success ? 'Transaction Complete!' : 'Processing Error'}
+                {resultMsg.success ? (language === 'es' ? '¡Transacción Completada!' : 'Transaction Complete!') : (language === 'es' ? 'Error al Procesar' : 'Processing Error')}
               </h4>
               <p className="text-xs text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-xl border border-slate-200">
                 {resultMsg.text}
               </p>
               <button
                 onClick={() => setResultMsg(null)}
-                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs transition"
+                className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs transition cursor-pointer"
               >
-                Scan Next Member
+                {language === 'es' ? 'Escanear Siguiente Miembro' : 'Scan Next Member'}
               </button>
             </div>
           ) : (
@@ -122,35 +124,35 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                 <button
                   type="button"
                   onClick={() => setActionType('earn')}
-                  className={`py-1.5 text-[11px] font-bold rounded-lg transition flex items-center justify-center gap-1 ${
+                  className={`py-1.5 text-[11px] font-bold rounded-lg transition flex items-center justify-center gap-1 cursor-pointer ${
                     actionType === 'earn'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Award className="w-3.5 h-3.5" /> Issue Pts
+                  <Award className="w-3.5 h-3.5" /> {language === 'es' ? 'Emitir Pts' : 'Issue Pts'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setActionType('redeem_voucher')}
-                  className={`py-1.5 text-[11px] font-bold rounded-lg transition flex items-center justify-center gap-1 ${
+                  className={`py-1.5 text-[11px] font-bold rounded-lg transition flex items-center justify-center gap-1 cursor-pointer ${
                     actionType === 'redeem_voucher'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <Tag className="w-3.5 h-3.5" /> Voucher
+                  <Tag className="w-3.5 h-3.5" /> {language === 'es' ? 'Cupón' : 'Voucher'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setActionType('store_poster')}
-                  className={`py-1.5 text-[11px] font-bold rounded-lg transition flex items-center justify-center gap-1 ${
+                  className={`py-1.5 text-[11px] font-bold rounded-lg transition flex items-center justify-center gap-1 cursor-pointer ${
                     actionType === 'store_poster'
                       ? 'bg-blue-600 text-white shadow-xs'
                       : 'text-slate-600 hover:text-slate-900'
                   }`}
                 >
-                  <QrCode className="w-3.5 h-3.5" /> Standee QR
+                  <QrCode className="w-3.5 h-3.5" /> {language === 'es' ? 'QR Póster' : 'Standee QR'}
                 </button>
               </div>
 
@@ -158,10 +160,10 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                 /* STORE QR POSTER STANDEE DISPLAY */
                 <div className="p-5 bg-gradient-to-b from-blue-50 to-slate-50 rounded-xl border border-blue-200 text-center space-y-3">
                   <div className="inline-block px-3 py-1 bg-blue-600 text-white font-black text-[10px] rounded-md tracking-wider uppercase shadow-xs">
-                    In-Store Entrance QR Poster
+                    {language === 'es' ? 'Póster QR de Entrada en Tienda' : 'In-Store Entrance QR Poster'}
                   </div>
                   <h4 className="font-extrabold text-slate-900 text-sm">
-                    Scan to Receive 1 Free Loyalty Point!
+                    {language === 'es' ? '¡Escanea para Recibir 1 Punto de Lealtad Gratis!' : 'Scan to Receive 1 Free Loyalty Point!'}
                   </h4>
                   <div className="w-40 h-40 bg-white p-3 rounded-xl border-2 border-slate-900 mx-auto shadow-md flex items-center justify-center">
                     {/* Simulated Clean QR Code Graphic */}
@@ -186,7 +188,9 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-600">
-                    Display this QR code poster at your counter or entrance door. Members scan it with their OmniLoyalty app to claim 1 instant point!
+                    {language === 'es'
+                      ? 'Coloca este póster con código QR en tu mostrador o entrada. ¡Los clientes lo escanean con su app OmniLoyalty para ganar 1 punto instantáneo!'
+                      : 'Display this QR code poster at your counter or entrance door. Members scan it with their OmniLoyalty app to claim 1 instant point!'}
                   </p>
                 </div>
               ) : (
@@ -194,7 +198,7 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                   {/* Member Pass ID */}
                   <div className="space-y-1">
                     <label className="text-xs font-bold text-slate-700">
-                      Member Pass ID / QR Code Payload
+                      {language === 'es' ? 'ID de Pase de Miembro / Código QR' : 'Member Pass ID / QR Code Payload'}
                     </label>
                     <input
                       type="text"
@@ -210,7 +214,7 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                     <div className="space-y-3">
                       <div className="space-y-1">
                         <label className="text-xs font-bold text-slate-700">
-                          Sale Checkout Amount (Cg)
+                          {language === 'es' ? 'Monto de la Venta (Cg)' : 'Sale Checkout Amount (Cg)'}
                         </label>
                         <input
                           type="number"
@@ -223,7 +227,7 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
 
                       <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 flex items-center justify-between text-xs">
                         <span className="font-bold text-blue-900">
-                          Points to issue:
+                          {language === 'es' ? 'Puntos a emitir:' : 'Points to issue:'}
                         </span>
                         <span className="font-extrabold text-blue-700 text-base">
                           +{calculatedPoints} pts
@@ -233,7 +237,7 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                   ) : (
                     <div className="space-y-1">
                       <label className="text-xs font-bold text-slate-700">
-                        Reward Voucher Code / QR Payload
+                        {language === 'es' ? 'Código de Cupón de Recompensa / QR' : 'Reward Voucher Code / QR Payload'}
                       </label>
                       <input
                         type="text"
@@ -248,10 +252,12 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                   <button
                     type="submit"
                     disabled={isProcessing}
-                    className="w-full py-3 text-white font-extrabold rounded-lg text-xs transition flex items-center justify-center gap-2 shadow-xs bg-blue-600 hover:bg-blue-700"
+                    className="w-full py-3 text-white font-extrabold rounded-lg text-xs transition flex items-center justify-center gap-2 shadow-xs bg-blue-600 hover:bg-blue-700 cursor-pointer"
                   >
                     <Sparkles className="w-4 h-4 text-amber-300" />
-                    {isProcessing ? 'Processing Terminal...' : 'Execute POS Checkout'}
+                    {isProcessing
+                      ? (language === 'es' ? 'Procesando Terminal...' : 'Processing Terminal...')
+                      : (language === 'es' ? 'Ejecutar Cobro POS' : 'Execute POS Checkout')}
                   </button>
                 </form>
               )}

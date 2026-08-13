@@ -13,6 +13,7 @@ import {
   Clock
 } from 'lucide-react';
 import { Store, NavigationRoute } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface InteractiveMapProps {
   stores: Store[];
@@ -33,6 +34,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   activeRoute,
   onStartNavigation
 }) => {
+  const { t, language } = useLanguage();
   const [zoomLevel, setZoomLevel] = useState(1);
   const [mapStyle, setMapStyle] = useState<'standard' | 'dark' | 'satellite'>('standard');
 
@@ -59,10 +61,10 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         <div className="flex items-center gap-2">
           <Compass className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
           <span className="font-extrabold text-slate-800 dark:text-slate-200">
-            Downtown Retail Network Map
+            {language === 'es' ? 'Mapa de la Red Comercial' : 'Downtown Retail Network Map'}
           </span>
           <span className="bg-indigo-50 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 font-bold px-2 py-0.5 rounded-full text-[10px]">
-            {stores.length} Outlets
+            {stores.length} {language === 'es' ? 'Tiendas' : 'Outlets'}
           </span>
         </div>
 
@@ -71,33 +73,33 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
             <button
               onClick={() => setMapStyle('standard')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                 mapStyle === 'standard'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-500'
               }`}
             >
-              Street
+              {language === 'es' ? 'Calle' : 'Street'}
             </button>
             <button
               onClick={() => setMapStyle('dark')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                 mapStyle === 'dark'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-500'
               }`}
             >
-              Dark
+              {language === 'es' ? 'Oscuro' : 'Dark'}
             </button>
             <button
               onClick={() => setMapStyle('satellite')}
-              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition ${
+              className={`px-2.5 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
                 mapStyle === 'satellite'
                   ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-500'
               }`}
             >
-              Satellite
+              {language === 'es' ? 'Satélite' : 'Satellite'}
             </button>
           </div>
 
@@ -105,7 +107,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl">
             <button
               onClick={() => setZoomLevel((z) => Math.max(0.8, z - 0.2))}
-              className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300"
+              className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 cursor-pointer"
               title="Zoom Out"
             >
               <ZoomOut className="w-3.5 h-3.5" />
@@ -113,7 +115,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
             <span className="text-[10px] font-mono px-1 font-bold">{Math.round(zoomLevel * 100)}%</span>
             <button
               onClick={() => setZoomLevel((z) => Math.min(1.6, z + 0.2))}
-              className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300"
+              className="p-1.5 hover:bg-white dark:hover:bg-slate-700 rounded-lg text-slate-600 dark:text-slate-300 cursor-pointer"
               title="Zoom In"
             >
               <ZoomIn className="w-3.5 h-3.5" />
@@ -260,7 +262,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         {/* Floating User Location Badge */}
         <div className="absolute top-4 left-4 bg-slate-900/90 backdrop-blur-md px-3 py-1.5 rounded-xl border border-slate-700 text-xs text-white flex items-center gap-2">
           <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
-          <span className="font-semibold">Your Location: Downtown SF</span>
+          <span className="font-semibold">{t('map.current_location')}</span>
         </div>
 
         {/* Selected Store Floating Tooltip Card */}
@@ -275,20 +277,20 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
                 <p className="text-xs text-slate-300">{selectedStore.address}</p>
               </div>
               <span className="text-xs font-bold text-emerald-400 bg-emerald-950/80 px-2.5 py-1 rounded-xl border border-emerald-500/30 whitespace-nowrap">
-                {selectedStore.pointsRate} pts/Cg
+                {selectedStore.pointsRate} {t('stores.points_rate')}
               </span>
             </div>
 
             <div className="flex items-center justify-between pt-2 border-t border-slate-800 text-xs">
               <span className="text-slate-400 font-medium">
-                Distance: {selectedStore.distanceKm || 0.4} km away
+                {t('map.distance')}: {selectedStore.distanceKm || 0.4} km {language === 'es' ? 'de distancia' : 'away'}
               </span>
               <button
                 onClick={() => onStartNavigation(selectedStore)}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold rounded-xl text-xs flex items-center gap-1.5 shadow-lg shadow-indigo-600/30 transition cursor-pointer"
               >
                 <Navigation className="w-3.5 h-3.5" />
-                Start Directions
+                {t('map.start_nav')}
               </button>
             </div>
           </div>

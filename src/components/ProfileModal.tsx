@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, KeyRound, Mail, ShieldCheck, Check, X, Lock, Eye, EyeOff, Save, Sparkles } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 interface ProfileModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
   authUser,
   onProfileUpdated
 }) => {
+  const { t, language } = useLanguage();
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [pinCode, setPinCode] = useState('');
@@ -56,12 +58,12 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
 
     const cleanPin = pinCode.trim();
     if (!/^\d{5}$/.test(cleanPin)) {
-      setErrorMsg('Security PIN must be exactly 5 digits (0-9).');
+      setErrorMsg(language === 'es' ? 'El PIN de seguridad debe tener exactamente 5 dígitos (0-9).' : 'Security PIN must be exactly 5 digits (0-9).');
       return;
     }
 
     if (!fullName.trim()) {
-      setErrorMsg('Full Name cannot be empty.');
+      setErrorMsg(language === 'es' ? 'El nombre completo no puede estar vacío.' : 'Full Name cannot be empty.');
       return;
     }
 
@@ -83,7 +85,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       setIsSaving(false);
 
       if (data.success) {
-        setSuccessMsg('Profile and 5-digit PIN updated successfully!');
+        setSuccessMsg(t('profile.success'));
         onProfileUpdated({
           username: authUser.username,
           name: fullName.trim(),
@@ -96,11 +98,11 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           onClose();
         }, 1200);
       } else {
-        setErrorMsg(data.error || 'Failed to update profile.');
+        setErrorMsg(data.error || (language === 'es' ? 'Error al actualizar el perfil.' : 'Failed to update profile.'));
       }
     } catch (err) {
       setIsSaving(false);
-      setErrorMsg('Error saving profile settings.');
+      setErrorMsg(language === 'es' ? 'Error al guardar la configuración del perfil.' : 'Error saving profile settings.');
     }
   };
 
@@ -109,7 +111,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
       <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-6 relative">
         <button
           onClick={onClose}
-          className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+          className="absolute top-5 right-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
@@ -121,10 +123,10 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           </div>
           <div>
             <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-              Account Profile & Security Settings
+              {t('profile.title')}
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Manage profile info and your 5-digit transaction Security PIN
+              {t('profile.desc')}
             </p>
           </div>
         </div>
@@ -148,11 +150,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           {/* Read-Only Info Box */}
           <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 grid grid-cols-2 gap-3 text-xs">
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Username</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">
+                {t('profile.field_username')}
+              </span>
               <p className="font-mono font-bold text-slate-800 dark:text-slate-200">@{authUser.username}</p>
             </div>
             <div>
-              <span className="text-[10px] font-bold text-slate-400 uppercase">Pass ID</span>
+              <span className="text-[10px] font-bold text-slate-400 uppercase">
+                {t('profile.field_pass_id')}
+              </span>
               <p className="font-mono font-bold text-blue-600 dark:text-blue-400">{authUser.passId}</p>
             </div>
           </div>
@@ -160,7 +166,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           {/* Full Name Input */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-              <User className="w-3.5 h-3.5 text-blue-500" /> Full Name
+              <User className="w-3.5 h-3.5 text-blue-500" /> {t('profile.field_name')}
             </label>
             <input
               type="text"
@@ -174,7 +180,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           {/* Email Address Input */}
           <div className="space-y-1.5">
             <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-              <Mail className="w-3.5 h-3.5 text-blue-500" /> Email Address
+              <Mail className="w-3.5 h-3.5 text-blue-500" /> {t('profile.field_email')}
             </label>
             <input
               type="email"
@@ -189,15 +195,15 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
           <div className="p-4 bg-amber-50/70 dark:bg-amber-950/30 rounded-2xl border border-amber-200 dark:border-amber-900/60 space-y-2">
             <div className="flex items-center justify-between">
               <label className="text-xs font-extrabold text-amber-900 dark:text-amber-300 flex items-center gap-1.5">
-                <KeyRound className="w-4 h-4 text-amber-600 dark:text-amber-400" /> 5-Digit Security PIN
+                <KeyRound className="w-4 h-4 text-amber-600 dark:text-amber-400" /> {t('profile.field_current_pin')}
               </label>
               <button
                 type="button"
                 onClick={() => setShowPin(!showPin)}
-                className="text-[11px] font-bold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-1"
+                className="text-[11px] font-bold text-amber-700 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
               >
                 {showPin ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                <span>{showPin ? 'Hide' : 'Show'}</span>
+                <span>{showPin ? (language === 'es' ? 'Ocultar' : 'Hide') : (language === 'es' ? 'Mostrar' : 'Show')}</span>
               </button>
             </div>
 
@@ -219,7 +225,9 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
             </div>
 
             <p className="text-[11px] text-amber-800 dark:text-amber-400/90 leading-snug">
-              This 5-digit code is required whenever you commit transactions (redeeming rewards, POS scans, or broadcasting store deals).
+              {language === 'es'
+                ? 'Este código de 5 dígitos es necesario cada vez que autorices transacciones (canje de recompensas, escaneo POS o emisión de promociones).'
+                : 'This 5-digit code is required whenever you commit transactions (redeeming rewards, POS scans, or broadcasting store deals).'}
             </p>
           </div>
 
@@ -230,7 +238,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl transition shadow-md shadow-blue-500/20 flex items-center justify-center gap-2 cursor-pointer"
             >
               <Save className="w-4 h-4" />
-              <span>{isSaving ? 'Saving Changes...' : 'Save Profile & PIN'}</span>
+              <span>{isSaving ? (language === 'es' ? 'Guardando...' : 'Saving Changes...') : t('profile.btn_save')}</span>
             </button>
 
             <button
@@ -238,7 +246,7 @@ export const ProfileModal: React.FC<ProfileModalProps> = ({
               onClick={onClose}
               className="py-3 px-5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition cursor-pointer"
             >
-              Cancel
+              {language === 'es' ? 'Cancelar' : 'Cancel'}
             </button>
           </div>
         </form>

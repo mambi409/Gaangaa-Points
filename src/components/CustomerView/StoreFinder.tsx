@@ -18,6 +18,7 @@ import {
   Sparkles
 } from 'lucide-react';
 import { Store, RewardItem } from '../../types';
+import { useLanguage } from '../../context/LanguageContext';
 
 interface StoreFinderProps {
   stores: Store[];
@@ -31,15 +32,6 @@ interface StoreFinderProps {
   onSearchChange: (q: string) => void;
 }
 
-const CATEGORIES = [
-  { label: 'All', icon: Sparkles },
-  { label: 'Coffee', icon: Coffee },
-  { label: 'Fashion', icon: ShoppingBag },
-  { label: 'Grocery', icon: ShoppingBasket },
-  { label: 'Electronics', icon: Smartphone },
-  { label: 'Dining', icon: UtensilsCrossed }
-];
-
 export const StoreFinder: React.FC<StoreFinderProps> = ({
   stores,
   rewards,
@@ -51,8 +43,18 @@ export const StoreFinder: React.FC<StoreFinderProps> = ({
   searchQuery,
   onSearchChange
 }) => {
+  const { t, language } = useLanguage();
   const [sortBy, setSortBy] = useState<'distance' | 'pointsRate' | 'rating'>('distance');
   const [activeStoreModal, setActiveStoreModal] = useState<Store | null>(null);
+
+  const categories = [
+    { label: 'All', display: t('stores.cat_all'), icon: Sparkles },
+    { label: 'Coffee', display: t('stores.cat_coffee'), icon: Coffee },
+    { label: 'Fashion', display: t('stores.cat_fashion'), icon: ShoppingBag },
+    { label: 'Grocery', display: t('stores.cat_grocery'), icon: ShoppingBasket },
+    { label: 'Electronics', display: t('stores.cat_electronics'), icon: Smartphone },
+    { label: 'Dining', display: t('stores.cat_dining'), icon: UtensilsCrossed }
+  ];
 
   const sortedStores = [...stores].sort((a, b) => {
     if (sortBy === 'distance') return (a.distanceKm || 0) - (b.distanceKm || 0);
@@ -72,7 +74,7 @@ export const StoreFinder: React.FC<StoreFinderProps> = ({
               type="text"
               value={searchQuery}
               onChange={(e) => onSearchChange(e.target.value)}
-              placeholder="Search store name, category, offer or location..."
+              placeholder={t('stores.search_placeholder')}
               className="w-full pl-12 pr-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-sm focus:outline-hidden focus:ring-2 focus:ring-blue-600 text-slate-900 placeholder:text-slate-400"
             />
           </div>
@@ -80,36 +82,38 @@ export const StoreFinder: React.FC<StoreFinderProps> = ({
           {/* Sort By Dropdown */}
           <div className="flex items-center gap-2 self-end md:self-auto shrink-0 text-xs">
             <SlidersHorizontal className="w-4 h-4 text-slate-400" />
-            <span className="font-semibold text-slate-500">Sort:</span>
+            <span className="font-semibold text-slate-500">
+              {language === 'es' ? 'Ordenar:' : 'Sort:'}
+            </span>
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as any)}
               className="bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 font-bold text-slate-800 focus:outline-hidden"
             >
-              <option value="distance">Nearest First</option>
-              <option value="pointsRate">Highest Points Rate</option>
-              <option value="rating">Top Rated</option>
+              <option value="distance">{language === 'es' ? 'Más cercano' : 'Nearest First'}</option>
+              <option value="pointsRate">{language === 'es' ? 'Mayor tasa de puntos' : 'Highest Points Rate'}</option>
+              <option value="rating">{language === 'es' ? 'Mejor calificado' : 'Top Rated'}</option>
             </select>
           </div>
         </div>
 
         {/* Category Pills */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-          {CATEGORIES.map((cat) => {
+          {categories.map((cat) => {
             const Icon = cat.icon;
             const isSelected = selectedCategory === cat.label;
             return (
               <button
                 key={cat.label}
                 onClick={() => onSelectCategory(cat.label)}
-                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition ${
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                   isSelected
                     ? 'bg-blue-600 text-white shadow-xs shadow-blue-200'
                     : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
                 }`}
               >
                 <Icon className="w-3.5 h-3.5" />
-                {cat.label}
+                {cat.display}
               </button>
             );
           })}
@@ -137,13 +141,13 @@ export const StoreFinder: React.FC<StoreFinderProps> = ({
                   {/* Points Rate Badge */}
                   <div className="absolute top-3 left-3 bg-slate-900/90 text-emerald-400 font-extrabold text-xs px-3 py-1 rounded-md border border-slate-700 flex items-center gap-1 shadow-xs">
                     <Award className="w-3.5 h-3.5 text-emerald-400" />
-                    {store.pointsRate} pts / Cg 1
+                    {store.pointsRate} {t('stores.points_rate')}
                   </div>
 
                   {/* Distance Pill */}
                   <div className="absolute top-3 right-3 bg-blue-600 text-white font-bold text-xs px-2.5 py-1 rounded-md shadow-xs flex items-center gap-1">
                     <MapPin className="w-3 h-3" />
-                    {store.distanceKm ? `${store.distanceKm} km` : 'Nearby'}
+                    {store.distanceKm ? `${store.distanceKm} km` : language === 'es' ? 'Cercano' : 'Nearby'}
                   </div>
 
                   <div className="absolute bottom-3 left-3 right-3">
@@ -191,16 +195,16 @@ export const StoreFinder: React.FC<StoreFinderProps> = ({
               <div className="p-5 pt-0 grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setActiveStoreModal(store)}
-                  className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg text-xs transition flex items-center justify-center gap-1"
+                  className="py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold rounded-lg text-xs transition flex items-center justify-center gap-1 cursor-pointer"
                 >
-                  View Rewards
+                  {t('stores.view_rewards')}
                 </button>
                 <button
                   onClick={() => onNavigateToStore(store)}
-                  className="py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-1.5 shadow-xs shadow-blue-200"
+                  className="py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition flex items-center justify-center gap-1.5 shadow-xs shadow-blue-200 cursor-pointer"
                 >
                   <Navigation className="w-3.5 h-3.5" />
-                  Navigate
+                  {t('stores.get_directions')}
                 </button>
               </div>
             </div>
@@ -234,16 +238,18 @@ export const StoreFinder: React.FC<StoreFinderProps> = ({
                   onNavigateToStore(activeStoreModal);
                   setActiveStoreModal(null);
                 }}
-                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 shrink-0"
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition flex items-center gap-1.5 shrink-0 cursor-pointer"
               >
-                <Navigation className="w-3.5 h-3.5" /> Route Directions
+                <Navigation className="w-3.5 h-3.5" /> {t('map.start_nav')}
               </button>
             </div>
 
             {/* Store Rewards Section */}
             <div className="space-y-4">
               <h4 className="font-bold text-slate-900 dark:text-slate-100 text-sm">
-                Redeemable Rewards Catalog ({userPoints} pts available)
+                {language === 'es'
+                  ? `Catálogo de Recompensas Canjeables (${userPoints} pts disponibles)`
+                  : `Redeemable Rewards Catalog (${userPoints} pts available)`}
               </h4>
 
               <div className="space-y-3">
@@ -284,14 +290,18 @@ export const StoreFinder: React.FC<StoreFinderProps> = ({
                             }
                           }}
                           disabled={!canAfford}
-                          className={`px-4 py-2.5 rounded-xl text-xs font-extrabold shrink-0 transition ${
+                          className={`px-4 py-2.5 rounded-xl text-xs font-extrabold shrink-0 transition cursor-pointer ${
                             canAfford
                               ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-md shadow-emerald-600/20'
                               : 'bg-slate-200 dark:bg-slate-700 text-slate-400 cursor-not-allowed'
                           }`}
                         >
                           {canAfford
-                            ? `Redeem for ${reward.pointsCost} pts`
+                            ? language === 'es'
+                              ? `Canjear por ${reward.pointsCost} pts`
+                              : `Redeem for ${reward.pointsCost} pts`
+                            : language === 'es'
+                            ? `Faltan ${reward.pointsCost - userPoints} pts`
                             : `Need ${reward.pointsCost - userPoints} more pts`}
                         </button>
                       </div>
@@ -303,9 +313,9 @@ export const StoreFinder: React.FC<StoreFinderProps> = ({
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 text-right">
               <button
                 onClick={() => setActiveStoreModal(null)}
-                className="px-5 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold rounded-xl text-xs"
+                className="px-5 py-2.5 bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-200 font-bold rounded-xl text-xs cursor-pointer"
               >
-                Close
+                {language === 'es' ? 'Cerrar' : 'Close'}
               </button>
             </div>
           </div>

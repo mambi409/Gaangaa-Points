@@ -29,15 +29,16 @@ import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword
 } from '../lib/firebase';
+import { useLanguage } from '../context/LanguageContext';
 
 interface LoginModalProps {
   isOpen: boolean;
   initialMode?: 'login' | 'register';
-  initialRole?: 'user' | 'merchant';
+  initialRole?: 'user' | 'merchant' | 'admin';
   onClose?: () => void;
   onLoginSuccess: (
-    user: { username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' },
-    role: 'user' | 'merchant'
+    user: { username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' | 'admin' },
+    role: 'user' | 'merchant' | 'admin'
   ) => void;
 }
 
@@ -48,8 +49,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onClose,
   onLoginSuccess
 }) => {
+  const { t } = useLanguage();
   const [mode, setMode] = useState<'login' | 'register'>(initialMode);
-  const [accountType, setAccountType] = useState<'user' | 'merchant'>(initialRole);
+  const [accountType, setAccountType] = useState<'user' | 'merchant' | 'admin'>(initialRole);
 
   useEffect(() => {
     setMode(initialMode);
@@ -126,6 +128,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
       if (res && res.ok && data?.success) {
         setIsLoading(false);
+        const resolvedRole = data.user.role || (data.user.username.toLowerCase() === 'mambiadmin' ? 'admin' : (accountType === 'merchant' ? 'merchant' : 'user'));
         onLoginSuccess(
           {
             username: data.user.username,
@@ -134,9 +137,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             passId: data.user.passId,
             pinCode: data.user.pinCode,
             token: data.token,
-            role: 'user'
+            role: resolvedRole
           },
-          'user'
+          resolvedRole
         );
         return;
       }
@@ -171,23 +174,44 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
           if (userDoc && userDoc.password === password) {
             setIsLoading(false);
+            const userRole = userDoc.role || (userDoc.username.toLowerCase() === 'mambiadmin' ? 'admin' : 'user');
             onLoginSuccess(
               {
                 username: userDoc.username,
                 name: userDoc.fullName || userDoc.username,
                 email: userDoc.email,
-                passId: userDoc.passId || `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
+                passId: userDoc.passId || (userRole === 'admin' ? 'ADMIN-409-SF' : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`),
                 pinCode: userDoc.pinCode || '12345',
                 token: `token-fs-${Date.now()}-${userDoc.username}`,
-                role: 'user'
+                role: userRole
               },
-              'user'
+              userRole
             );
             return;
           }
         } catch (fsErr) {
           console.log('Client Firestore fallback check error:', fsErr);
         }
+      }
+
+      if (
+        (username.trim().toLowerCase() === 'mambiadmin' || username.trim().toLowerCase() === 'mambiadmin@omniloyalty.internal') &&
+        password === '409H!llarY409'
+      ) {
+        setIsLoading(false);
+        onLoginSuccess(
+          {
+            username: 'mambiadmin',
+            name: 'Mambi Administrator',
+            email: 'mambiadmin@omniloyalty.internal',
+            passId: 'ADMIN-409-SF',
+            pinCode: '40900',
+            token: 'token-mambiadmin',
+            role: 'admin'
+          },
+          'admin'
+        );
+        return;
       }
 
       if (
@@ -201,6 +225,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             name: 'Alex Rivera',
             email: 'mambi409@example.com',
             passId: 'PASS-9842-SF',
+            pinCode: '12345',
             token: 'token-mambi409',
             role: 'user'
           },
@@ -370,6 +395,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setSuccessMsg(null);
   };
 
+  const handleAutofillAdminDemo = () => {
+    setAccountType('user');
+    setMode('login');
+    setUsername('mambiadmin');
+    setPassword('409H!llarY409');
+    setError(null);
+    setSuccessMsg(null);
+  };
+
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -414,7 +448,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               }`}
             >
               <Wallet className="w-3.5 h-3.5" />
-              Member
+              {t('auth.tab_member')}
             </button>
             <button
               type="button"
@@ -429,7 +463,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               }`}
             >
               <Building2 className="w-3.5 h-3.5" />
-              Merchant POS
+              {t('auth.tab_merchant')}
             </button>
           </div>
 
@@ -444,18 +478,18 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                 {accountType === 'user'
                   ? mode === 'login'
-                    ? 'Member Login'
-                    : 'Member Registration'
+                    ? t('auth.login_title')
+                    : t('auth.register_title')
                   : mode === 'login'
-                  ? 'Merchant POS Sign In'
-                  : 'Merchant Partner Registration'}
+                  ? t('auth.merchant_login_title')
+                  : t('auth.merchant_register_title')}
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
                 {accountType === 'user'
                   ? mode === 'login'
-                    ? 'Sign in to access your digital wallet & rewards'
-                    : 'Create an account to earn points across local partner stores'
-                  : 'Sign in to access POS scanning terminal & reward management'}
+                    ? t('auth.login_subtitle')
+                    : t('auth.register_subtitle')
+                  : t('merchant.terminal_subtitle')}
               </p>
             </div>
           </div>
@@ -476,7 +510,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               }`}
             >
               <ShieldCheck className="w-3.5 h-3.5" />
-              Sign In
+              {t('nav.login')}
             </button>
             <button
               type="button"
@@ -492,7 +526,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               }`}
             >
               <UserPlus className="w-3.5 h-3.5" />
-              Register
+              {t('nav.register')}
             </button>
           </div>
 
@@ -502,22 +536,30 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900 dark:text-blue-200">
                   <KeyRound className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                  Quick Demo Autofill
+                  {t('auth.demo_autofill')}
                 </div>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap justify-end">
                   <button
                     type="button"
                     onClick={handleAutofillCustomerDemo}
                     className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 bg-white dark:bg-slate-800 dark:text-blue-300 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-700 cursor-pointer"
                   >
-                    Member
+                    {t('auth.demo_member')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAutofillAdminDemo}
+                    className="text-[10px] font-extrabold text-amber-700 hover:text-amber-900 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-700 cursor-pointer flex items-center gap-1"
+                  >
+                    <ShieldCheck className="w-2.5 h-2.5" />
+                    Admin
                   </button>
                   <button
                     type="button"
                     onClick={handleAutofillMerchantDemo}
                     className="text-[10px] font-extrabold text-indigo-700 hover:text-indigo-900 bg-white dark:bg-slate-800 dark:text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-700 cursor-pointer"
                   >
-                    Merchant
+                    {t('auth.demo_merchant')}
                   </button>
                 </div>
               </div>
@@ -546,7 +588,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <Mail className="w-3.5 h-3.5 text-slate-500" />
-                  Email Address or Username
+                  {t('auth.email_or_user')}
                 </label>
                 <input
                   type="text"
@@ -561,7 +603,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <Lock className="w-3.5 h-3.5 text-slate-500" />
-                  Password
+                  {t('auth.password')}
                 </label>
                 <div className="relative">
                   <input
@@ -591,10 +633,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               >
                 <ShieldCheck className="w-4 h-4" />
                 {isLoading
-                  ? 'Signing In...'
+                  ? t('auth.btn_signing_in')
                   : accountType === 'user'
-                  ? 'Sign In to Digital Wallet'
-                  : 'Sign In to Merchant Dashboard'}
+                  ? t('auth.btn_signin_wallet')
+                  : t('auth.btn_signin_merchant')}
               </button>
             </form>
           ) : (
@@ -603,7 +645,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <User className="w-3.5 h-3.5 text-slate-500" />
-                  {accountType === 'user' ? 'Full Name' : 'Business / Store Name'}
+                  {accountType === 'user' ? t('auth.full_name') : 'Business / Store Name'}
                 </label>
                 <input
                   type="text"
@@ -618,7 +660,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <Mail className="w-3.5 h-3.5 text-slate-500" />
-                  Email Address
+                  {t('auth.email_address')}
                 </label>
                 <input
                   type="email"
@@ -633,7 +675,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <User className="w-3.5 h-3.5 text-slate-500" />
-                  Username
+                  {t('auth.username')}
                 </label>
                 <input
                   type="text"
@@ -649,7 +691,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                     <Lock className="w-3.5 h-3.5 text-slate-500" />
-                    Password
+                    {t('auth.password')}
                   </label>
                   <input
                     type="password"
@@ -664,7 +706,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <div className="space-y-1">
                   <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                     <Lock className="w-3.5 h-3.5 text-slate-500" />
-                    Confirm
+                    {t('auth.confirm_password')}
                   </label>
                   <input
                     type="password"
@@ -681,9 +723,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-900/60 space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-extrabold text-amber-900 dark:text-amber-300 flex items-center gap-1">
-                    <KeyRound className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> 5-Digit Transaction PIN
+                    <KeyRound className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> {t('auth.pin_title')}
                   </label>
-                  <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">Required</span>
+                  <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">{t('auth.pin_required')}</span>
                 </div>
                 <input
                   type="password"
@@ -696,7 +738,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 text-xs font-mono tracking-widest font-extrabold text-amber-950 dark:text-amber-100 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
                 />
                 <p className="text-[10px] text-amber-800 dark:text-amber-400/90 leading-tight">
-                  This 5-digit code will be requested to authorize important transactions & redemptions.
+                  {t('auth.pin_desc')}
                 </p>
               </div>
 
@@ -709,10 +751,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               >
                 <UserPlus className="w-4 h-4" />
                 {isLoading
-                  ? 'Creating Account...'
+                  ? t('auth.btn_creating_acc')
                   : accountType === 'user'
-                  ? 'Create Member Account'
-                  : 'Register Merchant Store'}
+                  ? t('auth.btn_create_member')
+                  : t('auth.btn_register_merchant')}
               </button>
             </form>
           )}
