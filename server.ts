@@ -77,6 +77,32 @@ import {
 // In-Memory Fallback State (delegated to dbSync)
 let merchantStatsData = { ...INITIAL_MERCHANT_STATS };
 
+// Ensure Firestore data is synchronized before handling API requests on Vercel serverless functions
+let isSyncInitialized = false;
+let syncPromise: Promise<void> | null = null;
+
+async function ensureSync() {
+  if (!isSyncInitialized) {
+    if (!syncPromise) {
+      syncPromise = initFirestoreSync()
+        .then(() => {
+          isSyncInitialized = true;
+        })
+        .catch((err) => {
+          console.error('[Firestore] ensureSync error:', err);
+        });
+    }
+    await syncPromise;
+  }
+}
+
+app.use(async (req, res, next) => {
+  if (req.path.startsWith('/api')) {
+    await ensureSync();
+  }
+  next();
+});
+
 // API ROUTE: User Authentication (Login)
 app.post('/api/auth/login', async (req, res) => {
   try {

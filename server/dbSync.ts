@@ -180,7 +180,7 @@ export async function findUser(identifier: string): Promise<RegisteredUser | nul
   // 2. Query Firestore directly if available
   if (db) {
     try {
-      // Check document by username ID
+      // Direct doc ID check (covers both username and email doc IDs)
       const userDocRef = doc(db, 'users', clean);
       const userSnap = await getDoc(userDocRef);
       if (userSnap.exists()) {
@@ -191,8 +191,9 @@ export async function findUser(identifier: string): Promise<RegisteredUser | nul
         return u;
       }
 
-      // Query by email
       const usersColRef = collection(db, 'users');
+
+      // Query by email
       const qEmail = query(usersColRef, where('email', '==', clean));
       const emailSnap = await getDocs(qEmail);
       if (!emailSnap.empty) {
@@ -201,6 +202,32 @@ export async function findUser(identifier: string): Promise<RegisteredUser | nul
           usersDB.push(u);
         }
         return u;
+      }
+
+      // Query by username
+      const qUser = query(usersColRef, where('username', '==', clean));
+      const userSnap2 = await getDocs(qUser);
+      if (!userSnap2.empty) {
+        const u = userSnap2.docs[0].data() as RegisteredUser;
+        if (!usersDB.some((x) => x.username.toLowerCase() === u.username.toLowerCase())) {
+          usersDB.push(u);
+        }
+        return u;
+      }
+
+      // Final fallback: scan collection documents for case-insensitive match
+      const allDocs = await getDocs(usersColRef);
+      for (const d of allDocs.docs) {
+        const u = d.data() as RegisteredUser;
+        if (
+          (u.username && u.username.toLowerCase() === clean) ||
+          (u.email && u.email.toLowerCase() === clean)
+        ) {
+          if (!usersDB.some((x) => x.username.toLowerCase() === u.username.toLowerCase())) {
+            usersDB.push(u);
+          }
+          return u;
+        }
       }
     } catch (err) {
       console.error('[Firestore] findUser error:', err);
@@ -212,10 +239,17 @@ export async function findUser(identifier: string): Promise<RegisteredUser | nul
 
 // Write helper functions
 export async function persistUser(user: RegisteredUser) {
-  usersDB.push(user);
+  if (!usersDB.some((u) => u.username.toLowerCase() === user.username.toLowerCase())) {
+    usersDB.push(user);
+  }
   if (db) {
     try {
+      // Save under username doc ID
       await setDoc(doc(db, 'users', user.username.toLowerCase()), user);
+      // Save under email doc ID as well if email provided
+      if (user.email && user.email.trim()) {
+        await setDoc(doc(db, 'users', user.email.trim().toLowerCase()), user);
+      }
     } catch (e) {
       console.error('Failed to persist user to Firestore:', e);
     }

@@ -21,6 +21,7 @@ import {
   db,
   doc,
   getDoc,
+  setDoc,
   collection,
   query,
   where,
@@ -280,6 +281,26 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           await createUserWithEmailAndPassword(auth, email.trim(), password);
         } catch (fbErr: any) {
           console.log('Firebase Auth client registration note:', fbErr?.message || fbErr);
+        }
+      }
+
+      // Dual-key Firestore Client Sync during Registration
+      if (db) {
+        try {
+          const userObj = {
+            username: username.trim(),
+            password,
+            fullName: fullName.trim(),
+            email: email.trim().toLowerCase(),
+            passId: `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
+            pinCode: cleanPin
+          };
+          await setDoc(doc(db, 'users', username.trim().toLowerCase()), userObj);
+          if (email.trim()) {
+            await setDoc(doc(db, 'users', email.trim().toLowerCase()), userObj);
+          }
+        } catch (fsErr) {
+          console.warn('Client-side Firestore registration sync warning:', fsErr);
         }
       }
 
