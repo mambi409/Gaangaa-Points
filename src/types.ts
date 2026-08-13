@@ -70,6 +70,7 @@ export interface UserWallet {
   lifetimePoints: number;
   currentTier: UserTier;
   vouchers: UserVoucher[];
+  pinCode?: string;
 }
 
 export interface NavigationStep {

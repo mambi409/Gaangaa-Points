@@ -30,6 +30,7 @@ export interface RegisteredUser {
   fullName: string;
   email: string;
   passId: string;
+  pinCode: string;
 }
 
 export let storesData: Store[] = [...INITIAL_STORES];
@@ -43,7 +44,8 @@ export let usersDB: RegisteredUser[] = [
     password: '409H!llarY409',
     fullName: 'Alex Rivera',
     email: 'mambi409@example.com',
-    passId: 'PASS-9842-SF'
+    passId: 'PASS-9842-SF',
+    pinCode: '12345'
   }
 ];
 

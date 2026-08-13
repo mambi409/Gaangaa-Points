@@ -112,7 +112,7 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                 onClick={() => setResultMsg(null)}
                 className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-lg text-xs transition"
               >
-                Scan Next Customer
+                Scan Next Member
               </button>
             </div>
           ) : (
@@ -186,7 +186,7 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                     </div>
                   </div>
                   <p className="text-[11px] text-slate-600">
-                    Display this QR code poster at your counter or entrance door. Customers scan it with their OmniLoyalty app to claim 1 instant point!
+                    Display this QR code poster at your counter or entrance door. Members scan it with their OmniLoyalty app to claim 1 instant point!
                   </p>
                 </div>
               ) : (

@@ -221,6 +221,7 @@ export const INITIAL_WALLET: UserWallet = {
   pointsBalance: 1280,
   lifetimePoints: 3450,
   currentTier: 'Gold',
+  pinCode: '12345',
   vouchers: [
     {
       id: 'vouch-001',

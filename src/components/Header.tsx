@@ -1,5 +1,17 @@
 import React from 'react';
-import { Store, Wallet, ShieldCheck, Bell, MapPin, Sparkles, Navigation, UserCheck, LogOut, LogIn } from 'lucide-react';
+import {
+  Home as HomeIcon,
+  Store,
+  Wallet,
+  ShieldCheck,
+  Bell,
+  Sparkles,
+  Navigation,
+  UserCheck,
+  LogOut,
+  LogIn,
+  UserPlus
+} from 'lucide-react';
 import { UserWallet } from '../types';
 
 interface HeaderProps {
@@ -8,11 +20,12 @@ interface HeaderProps {
   wallet: UserWallet;
   unreadNotifsCount: number;
   onOpenNotifications: () => void;
-  activeView: 'wallet' | 'explore' | 'map';
-  onViewChange: (view: 'wallet' | 'explore' | 'map') => void;
-  authUser: { username: string; name: string } | null;
+  activeView: 'home' | 'wallet' | 'explore' | 'map';
+  onViewChange: (view: 'home' | 'wallet' | 'explore' | 'map') => void;
+  authUser: { username: string; name: string; email?: string; passId?: string; pinCode?: string; role?: 'user' | 'merchant' } | null;
   onLogout: () => void;
-  onOpenLogin: () => void;
+  onOpenLogin: (mode?: 'login' | 'register') => void;
+  onOpenProfile?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -25,102 +38,134 @@ export const Header: React.FC<HeaderProps> = ({
   onViewChange,
   authUser,
   onLogout,
-  onOpenLogin
+  onOpenLogin,
+  onOpenProfile
 }) => {
   return (
-    <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-900 shadow-xs">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-4">
-        {/* Brand */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white shadow-sm shadow-blue-200">
+    <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100 shadow-xs">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between gap-3">
+        {/* Brand logo & title */}
+        <button
+          onClick={() => onViewChange('home')}
+          className="flex items-center gap-2.5 hover:opacity-90 transition text-left cursor-pointer shrink-0"
+        >
+          <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shadow-sm shadow-blue-200 dark:shadow-none">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
-            <span className="font-extrabold text-lg tracking-tight text-slate-900">
+            <span className="font-extrabold text-lg tracking-tight text-slate-900 dark:text-white">
               OmniLoyalty
             </span>
-            <span className="hidden sm:inline-block ml-2 text-[10px] font-bold tracking-wider text-blue-700 uppercase bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
+            <span className="hidden sm:inline-block ml-2 text-[10px] font-bold tracking-wider text-blue-700 dark:text-blue-400 uppercase bg-blue-50 dark:bg-blue-950 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-900">
               Multi-Store Network
             </span>
           </div>
-        </div>
+        </button>
 
-        {/* Customer View Nav Pills */}
-        {currentRole === 'user' && (
-          <nav className="hidden md:flex items-center gap-1.5 bg-slate-100/80 p-1.5 rounded-xl border border-slate-200/80">
-            <button
-              onClick={() => onViewChange('wallet')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeView === 'wallet'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              Digital Wallet
-            </button>
-            <button
-              onClick={() => onViewChange('explore')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeView === 'explore'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <Store className="w-3.5 h-3.5" />
-              Store Directory
-            </button>
-            <button
-              onClick={() => onViewChange('map')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeView === 'map'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <Navigation className="w-3.5 h-3.5" />
-              Map & Route
-            </button>
-          </nav>
-        )}
+        {/* Navigation Pills */}
+        <nav className="hidden md:flex items-center gap-1 bg-slate-100/90 dark:bg-slate-800/80 p-1.5 rounded-2xl border border-slate-200/80 dark:border-slate-700/80">
+          <button
+            onClick={() => onViewChange('home')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+              activeView === 'home'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
+            }`}
+          >
+            <HomeIcon className="w-3.5 h-3.5" />
+            Home
+          </button>
 
-        {/* Right Section: Role Selector, Points Chip & Notifications */}
+          {currentRole === 'user' && (
+            <>
+              <button
+                onClick={() => onViewChange('wallet')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                  activeView === 'wallet'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                Digital Wallet
+              </button>
+              <button
+                onClick={() => onViewChange('explore')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                  activeView === 'explore'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" />
+                Store Directory
+              </button>
+              <button
+                onClick={() => onViewChange('map')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                  activeView === 'map'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <Navigation className="w-3.5 h-3.5" />
+                Map & Route
+              </button>
+            </>
+          )}
+        </nav>
+
+        {/* Right Section: Auth Status, Points, Notifications & Role Toggle */}
         <div className="flex items-center gap-2 sm:gap-3">
-          {/* Authenticated User Status & Logout */}
+          {/* Menu Items: Login & Register when logged out, or User Badge when logged in */}
           {authUser ? (
-            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
-              <div className="flex items-center gap-1.5 px-2 py-0.5 text-slate-800 font-extrabold">
-                <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+            <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+              <button
+                onClick={onOpenProfile}
+                title="Edit Account Profile & 5-Digit PIN"
+                className="flex items-center gap-1.5 px-2 py-1 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-lg font-extrabold transition cursor-pointer"
+              >
+                <UserCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
                 <span className="hidden lg:inline">{authUser.username}</span>
-              </div>
+                <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-950 text-amber-700 dark:text-amber-300 font-mono font-bold">PIN Active</span>
+              </button>
               <button
                 onClick={onLogout}
                 title="Log out of session"
-                className="p-1 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-rose-600 transition flex items-center gap-1 text-[11px] font-bold"
+                className="p-1 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-500 hover:text-rose-600 transition flex items-center gap-1 text-[11px] font-bold cursor-pointer"
               >
                 <LogOut className="w-3.5 h-3.5" />
                 <span className="hidden xl:inline">Logout</span>
               </button>
             </div>
           ) : (
-            <button
-              onClick={onOpenLogin}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-2xs"
-            >
-              <LogIn className="w-3.5 h-3.5" />
-              Sign In
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => onOpenLogin('login')}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-2xs cursor-pointer"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Login</span>
+              </button>
+              <button
+                onClick={() => onOpenLogin('register')}
+                className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-bold transition cursor-pointer"
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                <span>Register</span>
+              </button>
+            </div>
           )}
 
-          {/* User Points Badge */}
-          {currentRole === 'user' && (
-            <div className="hidden sm:flex items-center gap-2 bg-blue-50 hover:bg-blue-100/80 px-3 py-1.5 rounded-xl border border-blue-200/80 text-blue-900 cursor-pointer transition">
+          {/* Customer Points Badge */}
+          {currentRole === 'user' && authUser && (
+            <div className="hidden lg:flex items-center gap-2 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 px-3 py-1.5 rounded-xl border border-blue-200/80 dark:border-blue-900/80 text-blue-900 dark:text-blue-200 transition">
               <div className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
               <div className="text-right">
-                <div className="text-xs font-extrabold text-blue-700 leading-none">
+                <div className="text-xs font-extrabold text-blue-700 dark:text-blue-300 leading-none">
                   {wallet.pointsBalance.toLocaleString()} pts
                 </div>
-                <div className="text-[9px] text-blue-600/80 font-semibold">
+                <div className="text-[9px] text-blue-600/80 dark:text-blue-400 font-semibold">
                   {wallet.currentTier} Member
                 </div>
               </div>
@@ -130,7 +175,7 @@ export const Header: React.FC<HeaderProps> = ({
           {/* Notifications Trigger */}
           <button
             onClick={onOpenNotifications}
-            className="relative p-2 rounded-xl bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-700 hover:text-slate-900 transition"
+            className="relative p-2 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition cursor-pointer"
             aria-label="Open notifications"
           >
             <Bell className="w-4 h-4" />
@@ -141,66 +186,82 @@ export const Header: React.FC<HeaderProps> = ({
             )}
           </button>
 
-          {/* Customer / Merchant Switcher */}
-          <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200">
+          {/* Member / Merchant Role Switcher */}
+          <div className="flex items-center bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
             <button
               onClick={() => onRoleToggle('user')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                 currentRole === 'user'
                   ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <Wallet className="w-3 h-3" />
-              Customer
+              <span className="hidden sm:inline">Member</span>
             </button>
             <button
               onClick={() => onRoleToggle('merchant')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 cursor-pointer ${
                 currentRole === 'merchant'
-                  ? 'bg-emerald-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
               <ShieldCheck className="w-3 h-3" />
-              Merchant POS
+              <span className="hidden sm:inline">Merchant</span>
             </button>
           </div>
         </div>
       </div>
 
       {/* Mobile Sub-Navigation Bar */}
-      {currentRole === 'user' && (
-        <div className="md:hidden flex items-center justify-around bg-slate-50 border-t border-slate-200 px-2 py-1.5">
-          <button
-            onClick={() => onViewChange('wallet')}
-            className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg ${
-              activeView === 'wallet' ? 'text-blue-600' : 'text-slate-500'
-            }`}
-          >
-            <Wallet className="w-4 h-4" />
-            Wallet
-          </button>
-          <button
-            onClick={() => onViewChange('explore')}
-            className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg ${
-              activeView === 'explore' ? 'text-blue-600' : 'text-slate-500'
-            }`}
-          >
-            <Store className="w-4 h-4" />
-            Stores
-          </button>
-          <button
-            onClick={() => onViewChange('map')}
-            className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg ${
-              activeView === 'map' ? 'text-blue-600' : 'text-slate-500'
-            }`}
-          >
-            <Navigation className="w-4 h-4" />
-            Map
-          </button>
-        </div>
-      )}
+      <div className="md:hidden flex items-center justify-around bg-slate-50 dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 px-2 py-1.5">
+        <button
+          onClick={() => onViewChange('home')}
+          className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
+            activeView === 'home' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'
+          }`}
+        >
+          <HomeIcon className="w-4 h-4" />
+          <span>Home</span>
+        </button>
+
+        {currentRole === 'user' ? (
+          <>
+            <button
+              onClick={() => onViewChange('wallet')}
+              className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
+                activeView === 'wallet' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'
+              }`}
+            >
+              <Wallet className="w-4 h-4" />
+              <span>Wallet</span>
+            </button>
+            <button
+              onClick={() => onViewChange('explore')}
+              className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
+                activeView === 'explore' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'
+              }`}
+            >
+              <Store className="w-4 h-4" />
+              <span>Stores</span>
+            </button>
+            <button
+              onClick={() => onViewChange('map')}
+              className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
+                activeView === 'map' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'
+              }`}
+            >
+              <Navigation className="w-4 h-4" />
+              <span>Map</span>
+            </button>
+          </>
+        ) : (
+          <div className="text-xs font-bold text-indigo-600 dark:text-indigo-400 py-1">
+            Merchant Terminal Mode Active
+          </div>
+        )}
+      </div>
     </header>
   );
 };

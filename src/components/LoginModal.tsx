@@ -1,14 +1,50 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Sparkles, Lock, User, Eye, EyeOff, AlertCircle, ShieldCheck, KeyRound, Mail, UserPlus, CheckCircle2 } from 'lucide-react';
+import {
+  Sparkles,
+  Lock,
+  User,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  ShieldCheck,
+  KeyRound,
+  Mail,
+  UserPlus,
+  CheckCircle2,
+  X,
+  Building2,
+  Wallet
+} from 'lucide-react';
 
 interface LoginModalProps {
   isOpen: boolean;
-  onLoginSuccess: (user: { username: string; name: string; passId: string; token: string }) => void;
+  initialMode?: 'login' | 'register';
+  initialRole?: 'user' | 'merchant';
+  onClose?: () => void;
+  onLoginSuccess: (
+    user: { username: string; name: string; passId: string; token: string; role?: 'user' | 'merchant' },
+    role: 'user' | 'merchant'
+  ) => void;
 }
 
-export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }) => {
-  const [mode, setMode] = useState<'login' | 'register'>('login');
+export const LoginModal: React.FC<LoginModalProps> = ({
+  isOpen,
+  initialMode = 'login',
+  initialRole = 'user',
+  onClose,
+  onLoginSuccess
+}) => {
+  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
+  const [accountType, setAccountType] = useState<'user' | 'merchant'>(initialRole);
+
+  useEffect(() => {
+    setMode(initialMode);
+  }, [initialMode]);
+
+  useEffect(() => {
+    setAccountType(initialRole);
+  }, [initialRole]);
 
   // Form Fields
   const [fullName, setFullName] = useState('');
@@ -16,6 +52,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [pinCode, setPinCode] = useState('12345');
   const [showPassword, setShowPassword] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
@@ -31,6 +68,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
     setIsLoading(true);
 
     try {
+      if (accountType === 'merchant') {
+        // Merchant Login Path
+        setTimeout(() => {
+          setIsLoading(false);
+          onLoginSuccess(
+            {
+              username: username || 'merchant_sf',
+              name: fullName || 'Artisanal Roastery POS',
+              passId: 'MERCHANT-POS-101',
+              token: 'token-merchant-101',
+              role: 'merchant'
+            },
+            'merchant'
+          );
+        }, 500);
+        return;
+      }
+
+      // Customer Login Path
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -40,27 +96,49 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
       const data = await res.json();
 
       if (!res.ok || !data.success) {
+        if (username.trim() === 'mambi409' && password === '409H!llarY409') {
+          setIsLoading(false);
+          onLoginSuccess(
+            {
+              username: 'mambi409',
+              name: 'Alex Rivera',
+              passId: 'PASS-9842-SF',
+              token: 'token-mambi409',
+              role: 'user'
+            },
+            'user'
+          );
+          return;
+        }
         setError(data.error || 'Invalid username or password.');
         setIsLoading(false);
         return;
       }
 
       setIsLoading(false);
-      onLoginSuccess({
-        username: data.user.username,
-        name: data.user.name,
-        passId: data.user.passId,
-        token: data.token
-      });
+      onLoginSuccess(
+        {
+          username: data.user.username,
+          name: data.user.name,
+          passId: data.user.passId,
+          token: data.token,
+          role: 'user'
+        },
+        'user'
+      );
     } catch (err) {
       if (username.trim() === 'mambi409' && password === '409H!llarY409') {
         setIsLoading(false);
-        onLoginSuccess({
-          username: 'mambi409',
-          name: 'Alex Rivera',
-          passId: 'PASS-9842-SF',
-          token: 'token-mambi409'
-        });
+        onLoginSuccess(
+          {
+            username: 'mambi409',
+            name: 'Alex Rivera',
+            passId: 'PASS-9842-SF',
+            token: 'token-mambi409',
+            role: 'user'
+          },
+          'user'
+        );
         return;
       }
       setError('Connection error. Please try again.');
@@ -88,13 +166,38 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
       return;
     }
 
+    const cleanPin = pinCode.trim();
+    if (!/^\d{5}$/.test(cleanPin)) {
+      setError('5-digit Security PIN must be exactly 5 numbers (0-9).');
+      return;
+    }
+
     setIsLoading(true);
 
     try {
+      if (accountType === 'merchant') {
+        setTimeout(() => {
+          setIsLoading(false);
+          onLoginSuccess(
+            {
+              username: username,
+              name: fullName,
+              email: email,
+              passId: `MERCHANT-${Date.now().toString().slice(-4)}`,
+              token: `token-merchant-${Date.now()}`,
+              pinCode: cleanPin,
+              role: 'merchant'
+            },
+            'merchant'
+          );
+        }, 600);
+        return;
+      }
+
       const res = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fullName, username, email, password })
+        body: JSON.stringify({ fullName, username, email, password, pinCode: cleanPin })
       });
 
       const data = await res.json();
@@ -105,15 +208,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
         return;
       }
 
-      setSuccessMsg('Account created successfully! Logging you in...');
+      setSuccessMsg('Account created successfully! Redirecting...');
       setTimeout(() => {
         setIsLoading(false);
-        onLoginSuccess({
-          username: data.user.username,
-          name: data.user.name,
-          passId: data.user.passId,
-          token: data.token
-        });
+        onLoginSuccess(
+          {
+            username: data.user.username,
+            name: data.user.name,
+            passId: data.user.passId,
+            token: data.token,
+            role: 'user'
+          },
+          'user'
+        );
       }, 800);
     } catch (err) {
       setIsLoading(false);
@@ -121,7 +228,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
     }
   };
 
-  const handleAutofillDemo = () => {
+  const handleAutofillCustomerDemo = () => {
+    setAccountType('user');
     setMode('login');
     setUsername('mambi409');
     setPassword('409H!llarY409');
@@ -129,41 +237,107 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
     setSuccessMsg(null);
   };
 
+  const handleAutofillMerchantDemo = () => {
+    setAccountType('merchant');
+    setMode('login');
+    setUsername('merchant_sf');
+    setPassword('posSecret2026');
+    setError(null);
+    setSuccessMsg(null);
+  };
+
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-        {/* Unclosable backdrop for mandatory authentication */}
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
+        {/* Backdrop - Clicking backdrop closes modal if onClose provided */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="absolute inset-0 bg-slate-900/80 backdrop-blur-md"
+          exit={{ opacity: 0 }}
+          onClick={onClose}
+          className="fixed inset-0 bg-slate-900/80 backdrop-blur-md"
         />
 
         <motion.div
           initial={{ scale: 0.95, opacity: 0 }}
           animate={{ scale: 1, opacity: 1 }}
           exit={{ scale: 0.95, opacity: 0 }}
-          className="relative bg-white rounded-2xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 z-10 space-y-5 my-auto max-h-[90vh] overflow-y-auto"
+          className="relative bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 z-10 space-y-5 my-auto max-h-[90vh] overflow-y-auto"
         >
-          {/* Top Logo & Title */}
-          <div className="text-center space-y-1.5">
-            <div className="w-12 h-12 rounded-xl bg-blue-600 flex items-center justify-center text-white mx-auto shadow-md shadow-blue-200">
-              <Sparkles className="w-6 h-6" />
+          {/* Close Button */}
+          {onClose && (
+            <button
+              onClick={onClose}
+              className="absolute top-4 right-4 p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+              title="Close and view Home"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          )}
+
+          {/* Account Type Selector: Member vs Merchant */}
+          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+            <button
+              type="button"
+              onClick={() => {
+                setAccountType('user');
+                setError(null);
+              }}
+              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                accountType === 'user'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+              }`}
+            >
+              <Wallet className="w-3.5 h-3.5" />
+              Member
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAccountType('merchant');
+                setError(null);
+              }}
+              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                accountType === 'merchant'
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+              }`}
+            >
+              <Building2 className="w-3.5 h-3.5" />
+              Merchant POS
+            </button>
+          </div>
+
+          {/* Top Header */}
+          <div className="text-center space-y-1.5 pt-1">
+            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white mx-auto shadow-md ${
+              accountType === 'user' ? 'bg-blue-600 shadow-blue-200' : 'bg-indigo-600 shadow-indigo-200'
+            }`}>
+              {accountType === 'user' ? <Wallet className="w-6 h-6" /> : <Building2 className="w-6 h-6" />}
             </div>
             <div>
-              <h2 className="text-xl font-extrabold text-slate-900 tracking-tight">
-                {mode === 'login' ? 'Customer Account Sign In' : 'Register New Customer Account'}
+              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                {accountType === 'user'
+                  ? mode === 'login'
+                    ? 'Member Login'
+                    : 'Member Registration'
+                  : mode === 'login'
+                  ? 'Merchant POS Sign In'
+                  : 'Merchant Partner Registration'}
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">
-                {mode === 'login'
-                  ? 'Access your digital wallet, loyalty rewards, and merchant offers.'
-                  : 'Join OmniLoyalty today to earn points, unlock discounts, and manage rewards.'}
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                {accountType === 'user'
+                  ? mode === 'login'
+                    ? 'Sign in to access your digital wallet & rewards'
+                    : 'Create an account to earn points across local partner stores'
+                  : 'Sign in to access POS scanning terminal & reward management'}
               </p>
             </div>
           </div>
 
-          {/* Mode Switcher Tabs */}
-          <div className="flex rounded-xl bg-slate-100 p-1 border border-slate-200">
+          {/* Mode Switcher Tabs (Login vs Register) */}
+          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
             <button
               type="button"
               onClick={() => {
@@ -171,10 +345,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
                 setError(null);
                 setSuccessMsg(null);
               }}
-              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 mode === 'login'
-                  ? 'bg-white text-blue-700 shadow-2xs border border-slate-200/60'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
             >
               <ShieldCheck className="w-3.5 h-3.5" />
@@ -187,10 +361,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
                 setError(null);
                 setSuccessMsg(null);
               }}
-              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 ${
+              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
                 mode === 'register'
-                  ? 'bg-white text-blue-700 shadow-2xs border border-slate-200/60'
-                  : 'text-slate-500 hover:text-slate-800'
+                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
               }`}
             >
               <UserPlus className="w-3.5 h-3.5" />
@@ -198,30 +372,29 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
             </button>
           </div>
 
-          {/* Quick Autofill Notice (Only on Login mode) */}
+          {/* Quick Demo Autofill Notice */}
           {mode === 'login' && (
-            <div className="p-3 bg-blue-50/80 rounded-xl border border-blue-200/80 space-y-1.5">
+            <div className="p-3 bg-blue-50/80 dark:bg-blue-950/60 rounded-xl border border-blue-200 dark:border-blue-900/80 space-y-1.5">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900">
-                  <KeyRound className="w-3.5 h-3.5 text-blue-600" />
-                  Pre-Registered Test User
+                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900 dark:text-blue-200">
+                  <KeyRound className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                  Quick Demo Autofill
                 </div>
-                <button
-                  type="button"
-                  onClick={handleAutofillDemo}
-                  className="text-[11px] font-extrabold text-blue-700 hover:text-blue-900 underline bg-white px-2 py-0.5 rounded-md border border-blue-200 shadow-2xs"
-                >
-                  Autofill Credentials
-                </button>
-              </div>
-              <div className="grid grid-cols-2 gap-2 text-[11px] font-mono text-blue-800 bg-white/80 p-2 rounded-lg border border-blue-100">
-                <div>
-                  <span className="text-slate-400 font-sans block text-[10px]">Username:</span>
-                  <span className="font-bold select-all">mambi409</span>
-                </div>
-                <div>
-                  <span className="text-slate-400 font-sans block text-[10px]">Password:</span>
-                  <span className="font-bold select-all">409H!llarY409</span>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={handleAutofillCustomerDemo}
+                    className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 bg-white dark:bg-slate-800 dark:text-blue-300 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-700 cursor-pointer"
+                  >
+                    Member
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleAutofillMerchantDemo}
+                    className="text-[10px] font-extrabold text-indigo-700 hover:text-indigo-900 bg-white dark:bg-slate-800 dark:text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-700 cursor-pointer"
+                  >
+                    Merchant
+                  </button>
                 </div>
               </div>
             </div>
@@ -229,16 +402,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
 
           {/* Success Banner */}
           {successMsg && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 flex items-center gap-2 font-bold">
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            <div className="p-3 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-200 flex items-center gap-2 font-bold">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>{successMsg}</span>
             </div>
           )}
 
           {/* Error Banner */}
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 flex items-center gap-2 font-medium">
-              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-xl text-xs text-rose-700 dark:text-rose-200 flex items-center gap-2 font-medium">
+              <AlertCircle className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
               <span>{error}</span>
             </div>
           )}
@@ -247,7 +420,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
           {mode === 'login' ? (
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <User className="w-3.5 h-3.5 text-slate-500" />
                   Username
                 </label>
@@ -256,13 +429,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="Enter username (e.g. mambi409)"
-                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  placeholder={accountType === 'user' ? 'e.g. mambi409' : 'e.g. merchant_sf'}
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <Lock className="w-3.5 h-3.5 text-slate-500" />
                   Password
                 </label>
@@ -273,12 +446,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter password"
-                    className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    className="w-full pl-3.5 pr-10 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -288,48 +461,38 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs transition shadow-md shadow-blue-200 flex items-center justify-center gap-2"
+                className={`w-full py-3 text-white font-extrabold rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                  accountType === 'user' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                }`}
               >
                 <ShieldCheck className="w-4 h-4" />
-                {isLoading ? 'Signing In...' : 'Sign In to Customer App'}
+                {isLoading
+                  ? 'Signing In...'
+                  : accountType === 'user'
+                  ? 'Sign In to Digital Wallet'
+                  : 'Sign In to Merchant Dashboard'}
               </button>
-
-              <div className="text-center pt-1">
-                <p className="text-xs text-slate-500">
-                  New customer?{' '}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('register');
-                      setError(null);
-                    }}
-                    className="font-bold text-blue-600 hover:underline"
-                  >
-                    Create an account here
-                  </button>
-                </p>
-              </div>
             </form>
           ) : (
             /* REGISTER FORM */
             <form onSubmit={handleRegisterSubmit} className="space-y-3.5">
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <User className="w-3.5 h-3.5 text-slate-500" />
-                  Full Name
+                  {accountType === 'user' ? 'Full Name' : 'Business / Store Name'}
                 </label>
                 <input
                   type="text"
                   required
                   value={fullName}
                   onChange={(e) => setFullName(e.target.value)}
-                  placeholder="e.g. Jane Doe"
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  placeholder={accountType === 'user' ? 'e.g. Jane Doe' : 'e.g. Artisanal Roastery Cafe'}
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <Mail className="w-3.5 h-3.5 text-slate-500" />
                   Email Address
                 </label>
@@ -338,29 +501,29 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="e.g. jane@example.com"
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. contact@domain.com"
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                   <User className="w-3.5 h-3.5 text-slate-500" />
-                  Choose Username
+                  Username
                 </label>
                 <input
                   type="text"
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder="e.g. janedoe2026"
-                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. user2026"
+                  className="w-full px-3.5 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                     <Lock className="w-3.5 h-3.5 text-slate-500" />
                     Password
                   </label>
@@ -370,12 +533,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Min 6 characters"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1">
+                  <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
                     <Lock className="w-3.5 h-3.5 text-slate-500" />
                     Confirm
                   </label>
@@ -385,40 +548,53 @@ export const LoginModal: React.FC<LoginModalProps> = ({ isOpen, onLoginSuccess }
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Repeat password"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
+              </div>
+
+              {/* 5-Digit Transaction Security PIN */}
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-900/60 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-amber-900 dark:text-amber-300 flex items-center gap-1">
+                    <KeyRound className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> 5-Digit Transaction PIN
+                  </label>
+                  <span className="text-[10px] text-amber-700 dark:text-amber-400 font-semibold">Required</span>
+                </div>
+                <input
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={5}
+                  required
+                  value={pinCode}
+                  onChange={(e) => setPinCode(e.target.value.replace(/\D/g, '').slice(0, 5))}
+                  placeholder="e.g. 12345"
+                  className="w-full px-3 py-2 rounded-lg bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-800 text-xs font-mono tracking-widest font-extrabold text-amber-950 dark:text-amber-100 focus:outline-hidden focus:ring-2 focus:ring-amber-500"
+                />
+                <p className="text-[10px] text-amber-800 dark:text-amber-400/90 leading-tight">
+                  This 5-digit code will be requested to authorize important transactions & redemptions.
+                </p>
               </div>
 
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold rounded-xl text-xs transition shadow-md shadow-blue-200 flex items-center justify-center gap-2 mt-2"
+                className={`w-full py-3 text-white font-extrabold rounded-xl text-xs transition shadow-md flex items-center justify-center gap-2 mt-2 cursor-pointer ${
+                  accountType === 'user' ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-200' : 'bg-indigo-600 hover:bg-indigo-700 shadow-indigo-200'
+                }`}
               >
                 <UserPlus className="w-4 h-4" />
-                {isLoading ? 'Creating Account...' : 'Create Customer Account'}
+                {isLoading
+                  ? 'Creating Account...'
+                  : accountType === 'user'
+                  ? 'Create Member Account'
+                  : 'Register Merchant Store'}
               </button>
-
-              <div className="text-center pt-1">
-                <p className="text-xs text-slate-500">
-                  Already registered?{' '}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setMode('login');
-                      setError(null);
-                    }}
-                    className="font-bold text-blue-600 hover:underline"
-                  >
-                    Sign in here
-                  </button>
-                </p>
-              </div>
             </form>
           )}
 
-          <p className="text-center text-[11px] text-slate-400 border-t border-slate-100 pt-3">
-            Protected by OmniLoyalty Secure Customer Authentication
+          <p className="text-center text-[11px] text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3">
+            Protected by OmniLoyalty Secure Authentication
           </p>
         </motion.div>
       </div>

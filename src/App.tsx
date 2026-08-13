@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Header } from './components/Header';
+import { Home } from './components/Home';
 import { NotificationToastContainer } from './components/NotificationToastContainer';
 import { NotificationDrawer } from './components/NotificationDrawer';
 import { DigitalWallet } from './components/CustomerView/DigitalWallet';
@@ -12,6 +13,8 @@ import { POSScannerTerminal } from './components/MerchantView/POSScannerTerminal
 import { RewardCatalogManager } from './components/MerchantView/RewardCatalogManager';
 import { PushNotificationBroadcaster } from './components/MerchantView/PushNotificationBroadcaster';
 import { LoginModal } from './components/LoginModal';
+import { PinVerificationModal } from './components/PinVerificationModal';
+import { ProfileModal } from './components/ProfileModal';
 
 import {
   Store,
@@ -24,11 +27,8 @@ import {
 import { INITIAL_WALLET, INITIAL_USER_LOCATION } from './data/mockData';
 
 export default function App() {
-  const [currentRole, setCurrentRole] = useState<'user' | 'merchant'>('user');
-  const [activeView, setActiveView] = useState<'wallet' | 'explore' | 'map'>('wallet');
-
   // Authentication State
-  const [authUser, setAuthUser] = useState<{ username: string; name: string; passId: string; token: string } | null>(() => {
+  const [authUser, setAuthUser] = useState<{ username: string; name: string; passId: string; token: string; role?: 'user' | 'merchant' } | null>(() => {
     try {
       const saved = localStorage.getItem('omni_auth_user');
       return saved ? JSON.parse(saved) : null;
@@ -36,7 +36,18 @@ export default function App() {
       return null;
     }
   });
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(!authUser);
+
+  const [currentRole, setCurrentRole] = useState<'user' | 'merchant'>(
+    authUser?.role === 'merchant' ? 'merchant' : 'user'
+  );
+  const [activeView, setActiveView] = useState<'home' | 'wallet' | 'explore' | 'map'>(
+    authUser ? (authUser.role === 'merchant' ? 'wallet' : 'wallet') : 'home'
+  );
+
+  // Login Modal state
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [loginModalMode, setLoginModalMode] = useState<'login' | 'register'>('login');
+  const [loginModalRole, setLoginModalRole] = useState<'user' | 'merchant'>('user');
 
   // Application State
   const [wallet, setWallet] = useState<UserWallet>(INITIAL_WALLET);
@@ -59,18 +70,68 @@ export default function App() {
   const [isPOSTerminalOpen, setIsPOSTerminalOpen] = useState(false);
   const [isAddRewardOpen, setIsAddRewardOpen] = useState(false);
   const [isPushBroadcasterOpen, setIsPushBroadcasterOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+
+  // Security PIN Prompt State
+  const [pinPrompt, setPinPrompt] = useState<{
+    isOpen: boolean;
+    title: string;
+    description: string;
+    actionButtonText: string;
+    onSuccess: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    description: '',
+    actionButtonText: '',
+    onSuccess: () => {}
+  });
+
+  const promptPinVerification = (
+    title: string,
+    description: string,
+    actionButtonText: string,
+    onSuccess: () => void
+  ) => {
+    setPinPrompt({
+      isOpen: true,
+      title,
+      description,
+      actionButtonText,
+      onSuccess
+    });
+  };
+
+  // Auth Open Modal Handler
+  const handleOpenAuth = (role: 'user' | 'merchant' = 'user', mode: 'login' | 'register' = 'login') => {
+    setLoginModalRole(role);
+    setLoginModalMode(mode);
+    setIsLoginModalOpen(true);
+  };
 
   // Auth Callbacks
-  const handleLoginSuccess = (user: { username: string; name: string; passId: string; token: string }) => {
-    setAuthUser(user);
-    localStorage.setItem('omni_auth_user', JSON.stringify(user));
+  const handleLoginSuccess = (
+    user: { username: string; name: string; passId: string; token: string; role?: 'user' | 'merchant' },
+    role: 'user' | 'merchant'
+  ) => {
+    const userWithRole = { ...user, role };
+    setAuthUser(userWithRole);
+    localStorage.setItem('omni_auth_user', JSON.stringify(userWithRole));
+    setCurrentRole(role);
     setIsLoginModalOpen(false);
+
+    if (role === 'user') {
+      setActiveView('wallet'); // Customer goes to Digital Wallet page
+    } else {
+      setCurrentRole('merchant'); // Merchant goes to Merchant Dashboard
+    }
   };
 
   const handleLogout = () => {
     setAuthUser(null);
     localStorage.removeItem('omni_auth_user');
-    setIsLoginModalOpen(true);
+    setActiveView('home'); // Logged out users return to public Home page
+    setIsLoginModalOpen(false);
   };
 
   // Initial Data Fetching
@@ -154,40 +215,56 @@ export default function App() {
 
   // Handle Instant In-Store QR Scan Check-In (Earn 1 Point)
   const handleScanStoreQRCheckIn = async (storeId: string) => {
-    try {
-      const res = await fetch('/api/wallet/scan-qr-checkin', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ storeId })
-      });
-      const data = await res.json();
-      if (data.success) {
-        await fetchWalletData();
-        await fetchNotifications();
-      }
-      return data;
-    } catch (err) {
-      console.error('Error in QR scan check-in:', err);
-      return { success: false };
-    }
+    return new Promise<any>((resolve) => {
+      promptPinVerification(
+        'Verify PIN for Walk-In Reward',
+        'Claiming in-store walk-in points requires your 5-digit Security PIN verification.',
+        'Confirm Check-In (+1 Pt)',
+        async () => {
+          try {
+            const res = await fetch('/api/wallet/scan-qr-checkin', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ storeId })
+            });
+            const data = await res.json();
+            if (data.success) {
+              await fetchWalletData();
+              await fetchNotifications();
+            }
+            resolve(data);
+          } catch (err) {
+            console.error('Error in QR scan check-in:', err);
+            resolve({ success: false });
+          }
+        }
+      );
+    });
   };
 
   // Handle Redeeming Reward
   const handleRedeemReward = async (reward: RewardItem) => {
-    try {
-      const res = await fetch('/api/wallet/redeem', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ rewardId: reward.id })
-      });
-      const data = await res.json();
-      if (data.success) {
-        await fetchWalletData();
-        await fetchNotifications();
+    promptPinVerification(
+      'Verify 5-Digit PIN to Claim Reward',
+      `Redeeming "${reward.title}" for ${reward.pointsCost} pts requires your 5-digit Security PIN.`,
+      'Confirm & Redeem Reward',
+      async () => {
+        try {
+          const res = await fetch('/api/wallet/redeem', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ rewardId: reward.id })
+          });
+          const data = await res.json();
+          if (data.success) {
+            await fetchWalletData();
+            await fetchNotifications();
+          }
+        } catch (err) {
+          console.error('Error redeeming reward:', err);
+        }
       }
-    } catch (err) {
-      console.error('Error redeeming reward:', err);
-    }
+    );
   };
 
   // Handle Merchant POS Scan
@@ -197,56 +274,113 @@ export default function App() {
     amount?: number,
     voucherCode?: string
   ) => {
-    const res = await fetch('/api/merchant/scan-pass', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        passId,
-        action,
-        storeId: selectedMerchantStoreId,
-        amount,
-        voucherCode
-      })
+    return new Promise<any>((resolve) => {
+      const label = action === 'earn' ? `Credit Points ($${amount})` : `Redeem Voucher (${voucherCode})`;
+      promptPinVerification(
+        'Merchant POS Security Authorization',
+        `Authorizing POS action [${label}] for Member Pass ${passId} requires your 5-digit Merchant PIN.`,
+        'Authorize POS Transaction',
+        async () => {
+          try {
+            const res = await fetch('/api/merchant/scan-pass', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                passId,
+                action,
+                storeId: selectedMerchantStoreId,
+                amount,
+                voucherCode
+              })
+            });
+            const data = await res.json();
+            if (data.success) {
+              await fetchWalletData();
+              await fetchNotifications();
+            }
+            resolve(data);
+          } catch (err) {
+            console.error('POS scan error:', err);
+            resolve({ success: false, message: 'POS transaction failed.' });
+          }
+        }
+      );
     });
-    const data = await res.json();
-    if (data.success) {
-      await fetchWalletData();
-      await fetchNotifications();
-    }
-    return data;
   };
 
   // Handle Merchant Adding Reward Offer
   const handleMerchantAddReward = async (rewardData: Partial<RewardItem>) => {
-    const res = await fetch('/api/merchant/rewards', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(rewardData)
-    });
-    const data = await res.json();
-    if (data.success) {
-      await fetchStoresData();
-      await fetchNotifications();
-    }
+    promptPinVerification(
+      'Merchant Catalog Authorization',
+      `Publishing offer "${rewardData.title}" (${rewardData.pointsCost} pts) requires your 5-digit Merchant Security PIN.`,
+      'Publish Reward Offer',
+      async () => {
+        try {
+          const res = await fetch('/api/merchant/rewards', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(rewardData)
+          });
+          const data = await res.json();
+          if (data.success) {
+            await fetchStoresData();
+            await fetchNotifications();
+          }
+        } catch (err) {
+          console.error('Error adding reward:', err);
+        }
+      }
+    );
   };
 
   // Handle Merchant Push Broadcast
   const handleMerchantSendBroadcast = async (title: string, body: string, targetAudience: string) => {
-    const res = await fetch('/api/notifications/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title,
-        body,
-        type: 'promo',
-        storeId: selectedMerchantStoreId,
-        targetRole: 'user'
-      })
-    });
-    const data = await res.json();
-    if (data.success) {
-      await fetchNotifications();
+    promptPinVerification(
+      'Merchant Push Broadcast Authorization',
+      `Broadcasting deal notification "${title}" to members requires your 5-digit Merchant PIN.`,
+      'Authorize Push Broadcast',
+      async () => {
+        try {
+          const res = await fetch('/api/notifications/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title,
+              body,
+              type: 'promo',
+              storeId: selectedMerchantStoreId,
+              targetRole: 'user'
+            })
+          });
+          const data = await res.json();
+          if (data.success) {
+            await fetchNotifications();
+          }
+        } catch (err) {
+          console.error('Broadcast error:', err);
+        }
+      }
+    );
+  };
+
+  // Handle Profile Updates
+  const handleProfileUpdated = (updatedUser: {
+    username: string;
+    name: string;
+    email: string;
+    passId: string;
+    pinCode: string;
+    role?: 'user' | 'merchant';
+  }) => {
+    setAuthUser((prev) => (prev ? { ...prev, ...updatedUser } : null));
+    const current = localStorage.getItem('omni_auth_user');
+    if (current) {
+      try {
+        const parsed = JSON.parse(current);
+        localStorage.setItem('omni_auth_user', JSON.stringify({ ...parsed, ...updatedUser }));
+      } catch (e) {}
     }
+    fetchWalletData();
   };
 
   // Handle Mock Test Push Notification
@@ -294,18 +428,24 @@ export default function App() {
       {/* Real-Time Push Notification Toasts */}
       <NotificationToastContainer notifications={notifications} onDismiss={handleDismissToast} />
 
-      {/* Main Header */}
+      {/* Main Navigation Header */}
       <Header
         currentRole={currentRole}
-        onRoleToggle={setCurrentRole}
+        onRoleToggle={(role) => {
+          setCurrentRole(role);
+          if (role === 'user' && activeView === 'home' && authUser) {
+            setActiveView('wallet');
+          }
+        }}
         wallet={wallet}
         unreadNotifsCount={notifications.filter((n) => !n.read).length}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         activeView={activeView}
-        onViewChange={setActiveView}
+        onViewChange={(view) => setActiveView(view)}
         authUser={authUser}
         onLogout={handleLogout}
-        onOpenLogin={() => setIsLoginModalOpen(true)}
+        onOpenLogin={(mode?: 'login' | 'register') => handleOpenAuth('user', mode || 'login')}
+        onOpenProfile={() => setIsProfileModalOpen(true)}
       />
 
       {/* Notification Drawer */}
@@ -320,7 +460,15 @@ export default function App() {
 
       {/* Main Body Content Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-8">
-        {currentRole === 'user' ? (
+        {activeView === 'home' ? (
+          /* Public Home Landing Page */
+          <Home
+            stores={stores}
+            onOpenMemberAuth={(mode) => handleOpenAuth('user', mode)}
+            onOpenMerchantAuth={() => handleOpenAuth('merchant', 'login')}
+            onExploreStores={() => setActiveView('explore')}
+          />
+        ) : currentRole === 'user' ? (
           <>
             {/* View Switching Logic for Customer App */}
             {activeView === 'wallet' && (
@@ -439,10 +587,36 @@ export default function App() {
         />
       )}
 
-      {/* Customer Login Modal - Mandatory for anonymous users */}
+      {/* Customer & Merchant Auth Modal */}
       <LoginModal
-        isOpen={isLoginModalOpen || !authUser}
+        isOpen={isLoginModalOpen}
+        initialMode={loginModalMode}
+        initialRole={loginModalRole}
+        onClose={() => setIsLoginModalOpen(false)}
         onLoginSuccess={handleLoginSuccess}
+      />
+
+      {/* Member & Merchant Account Profile Modal */}
+      <ProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        authUser={authUser}
+        onProfileUpdated={handleProfileUpdated}
+      />
+
+      {/* Important Transaction 5-Digit PIN Verification Modal */}
+      <PinVerificationModal
+        isOpen={pinPrompt.isOpen}
+        onClose={() => setPinPrompt((prev) => ({ ...prev, isOpen: false }))}
+        onVerifySuccess={() => {
+          setPinPrompt((prev) => ({ ...prev, isOpen: false }));
+          pinPrompt.onSuccess();
+        }}
+        title={pinPrompt.title}
+        description={pinPrompt.description}
+        actionButtonText={pinPrompt.actionButtonText}
+        userPinCode={authUser?.pinCode || wallet?.pinCode || '12345'}
+        username={authUser?.username}
       />
     </div>
   );

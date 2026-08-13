@@ -159,7 +159,7 @@ export const PushNotificationBroadcaster: React.FC<PushNotificationBroadcasterPr
             <div className="p-4 bg-slate-950 rounded-2xl border border-slate-800 text-white space-y-2">
               <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono">
                 <span className="flex items-center gap-1">
-                  <Smartphone className="w-3 h-3 text-amber-400" /> Customer Mobile Lockscreen Preview
+                  <Smartphone className="w-3 h-3 text-amber-400" /> Member Mobile Lockscreen Preview
                 </span>
                 <span>NOW</span>
               </div>

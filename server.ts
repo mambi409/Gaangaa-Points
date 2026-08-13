@@ -80,12 +80,15 @@ app.post('/api/auth/login', (req, res) => {
     );
 
     if (foundUser && foundUser.password === password) {
+      const pinCode = foundUser.pinCode || walletData.pinCode || '12345';
       return res.json({
         success: true,
         user: {
           username: foundUser.username,
           name: foundUser.fullName,
+          email: foundUser.email,
           passId: foundUser.passId,
+          pinCode: pinCode,
           pointsBalance: walletData.pointsBalance,
           currentTier: walletData.currentTier
         },
@@ -105,14 +108,19 @@ app.post('/api/auth/login', (req, res) => {
 // API ROUTE: User Registration
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { fullName, username, email, password } = req.body;
+    const { fullName, username, email, password, pinCode } = req.body;
 
     if (!fullName || !username || !email || !password) {
-      return res.status(400).json({ error: 'All fields (Full Name, Username, Email, Password) are required.' });
+      return res.status(400).json({ error: 'All fields (Full Name, Username, Email, Password, PIN) are required.' });
     }
 
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
+
+    const cleanPin = (pinCode || '12345').trim();
+    if (!/^\d{5}$/.test(cleanPin)) {
+      return res.status(400).json({ error: 'Security PIN must be exactly 5 digits (0-9).' });
     }
 
     const cleanUsername = username.trim();
@@ -135,14 +143,17 @@ app.post('/api/auth/register', async (req, res) => {
       password,
       fullName: fullName.trim(),
       email: cleanEmail,
-      passId: newPassId
+      passId: newPassId,
+      pinCode: cleanPin
     };
 
     await persistUser(newUser);
 
-    // Update wallet user name for new registration session
+    // Update wallet user details for new registration session
     walletData.userName = newUser.fullName;
+    walletData.userEmail = newUser.email;
     walletData.passId = newUser.passId;
+    walletData.pinCode = newUser.pinCode;
     await persistWallet();
 
     return res.status(201).json({
@@ -151,7 +162,9 @@ app.post('/api/auth/register', async (req, res) => {
       user: {
         username: newUser.username,
         name: newUser.fullName,
+        email: newUser.email,
         passId: newUser.passId,
+        pinCode: newUser.pinCode,
         pointsBalance: walletData.pointsBalance,
         currentTier: walletData.currentTier
       },
@@ -159,6 +172,79 @@ app.post('/api/auth/register', async (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+// API ROUTE: Update User Profile & 5-Digit PIN Code
+app.post('/api/auth/update-profile', async (req, res) => {
+  try {
+    const { username, fullName, email, pinCode } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Username is required to update profile.' });
+    }
+
+    const cleanPin = (pinCode || '').trim();
+    if (cleanPin && !/^\d{5}$/.test(cleanPin)) {
+      return res.status(400).json({ error: 'Security PIN must be exactly 5 digits (0-9).' });
+    }
+
+    const user = usersDB.find((u) => u.username.toLowerCase() === username.trim().toLowerCase());
+    if (user) {
+      if (fullName) user.fullName = fullName.trim();
+      if (email) user.email = email.trim().toLowerCase();
+      if (cleanPin) user.pinCode = cleanPin;
+      await persistUser(user);
+    }
+
+    if (fullName) walletData.userName = fullName.trim();
+    if (email) walletData.userEmail = email.trim().toLowerCase();
+    if (cleanPin) walletData.pinCode = cleanPin;
+    await persistWallet();
+
+    return res.json({
+      success: true,
+      message: 'Profile and 5-digit PIN updated successfully!',
+      user: {
+        username: user?.username || username,
+        name: walletData.userName,
+        email: walletData.userEmail,
+        passId: walletData.passId,
+        pinCode: walletData.pinCode || '12345',
+        pointsBalance: walletData.pointsBalance,
+        currentTier: walletData.currentTier
+      }
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update profile' });
+  }
+});
+
+// API ROUTE: Verify 5-Digit PIN Code
+app.post('/api/auth/verify-pin', (req, res) => {
+  try {
+    const { username, pinCode } = req.body;
+    const cleanPin = (pinCode || '').trim();
+
+    if (!cleanPin || cleanPin.length !== 5) {
+      return res.status(400).json({ success: false, error: 'PIN must be 5 digits.' });
+    }
+
+    let validPin = walletData.pinCode || '12345';
+    if (username) {
+      const user = usersDB.find((u) => u.username.toLowerCase() === username.trim().toLowerCase());
+      if (user && user.pinCode) {
+        validPin = user.pinCode;
+      }
+    }
+
+    if (cleanPin === validPin) {
+      return res.json({ success: true, message: 'PIN verified successfully.' });
+    }
+
+    return res.status(401).json({ success: false, error: 'Incorrect 5-digit Security PIN code. Transaction aborted.' });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'PIN verification failed' });
   }
 });
 

@@ -101,7 +101,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition flex items-center gap-2 shadow-xs shadow-blue-200 self-end"
           >
             <Scan className="w-4 h-4" />
-            Scan Customer QR
+            Scan Member QR
           </button>
         </div>
       </div>
