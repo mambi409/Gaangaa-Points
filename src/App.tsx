@@ -28,7 +28,7 @@ import { INITIAL_WALLET, INITIAL_USER_LOCATION } from './data/mockData';
 
 export default function App() {
   // Authentication State
-  const [authUser, setAuthUser] = useState<{ username: string; name: string; passId: string; token: string; role?: 'user' | 'merchant' } | null>(() => {
+  const [authUser, setAuthUser] = useState<{ username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' } | null>(() => {
     try {
       const saved = localStorage.getItem('omni_auth_user');
       return saved ? JSON.parse(saved) : null;
@@ -111,7 +111,7 @@ export default function App() {
 
   // Auth Callbacks
   const handleLoginSuccess = (
-    user: { username: string; name: string; passId: string; token: string; role?: 'user' | 'merchant' },
+    user: { username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' },
     role: 'user' | 'merchant'
   ) => {
     const userWithRole = { ...user, role };

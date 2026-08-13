@@ -12,6 +12,14 @@ import {
   query,
   where
 } from 'firebase/firestore';
+import {
+  getAuth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendEmailVerification,
+  updateProfile
+} from 'firebase/auth';
 import firebaseConfigData from '../../firebase-applet-config.json';
 
 const firebaseConfig = firebaseConfigData || null;
@@ -26,6 +34,8 @@ export const db = app
   ? getFirestore(app, firebaseConfig.firestoreDatabaseId || '(default)')
   : null;
 
+export const auth = app ? getAuth(app) : null;
+
 export {
   collection,
   doc,
@@ -36,6 +46,12 @@ export {
   updateDoc,
   deleteDoc,
   query,
-  where
+  where,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  signOut,
+  sendEmailVerification,
+  updateProfile
 };
+
 

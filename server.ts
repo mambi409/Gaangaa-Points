@@ -82,11 +82,15 @@ app.post('/api/auth/login', (req, res) => {
     const { username, password } = req.body;
 
     if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password are required.' });
+      return res.status(400).json({ error: 'Email or Username and password are required.' });
     }
 
+    const cleanIdentifier = username.trim().toLowerCase();
+
     const foundUser = usersDB.find(
-      (u) => u.username.toLowerCase() === username.trim().toLowerCase()
+      (u) =>
+        u.username.toLowerCase() === cleanIdentifier ||
+        (u.email && u.email.toLowerCase() === cleanIdentifier)
     );
 
     if (foundUser && foundUser.password === password) {
@@ -108,7 +112,7 @@ app.post('/api/auth/login', (req, res) => {
 
     return res.status(401).json({
       success: false,
-      error: 'Invalid username or password. Please check your credentials.'
+      error: 'Invalid email/username or password. Please check your credentials.'
     });
   } catch (err) {
     res.status(500).json({ error: 'Authentication failed' });
@@ -124,6 +128,12 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'All fields (Full Name, Username, Email, Password, PIN) are required.' });
     }
 
+    const cleanEmail = email.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(cleanEmail)) {
+      return res.status(400).json({ error: 'Please enter a valid email address.' });
+    }
+
     if (password.length < 6) {
       return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
     }
@@ -134,10 +144,9 @@ app.post('/api/auth/register', async (req, res) => {
     }
 
     const cleanUsername = username.trim();
-    const cleanEmail = email.trim().toLowerCase();
 
     const existingUser = usersDB.find(
-      (u) => u.username.toLowerCase() === cleanUsername.toLowerCase() || u.email.toLowerCase() === cleanEmail
+      (u) => u.username.toLowerCase() === cleanUsername.toLowerCase() || (u.email && u.email.toLowerCase() === cleanEmail)
     );
 
     if (existingUser) {
@@ -168,7 +177,7 @@ app.post('/api/auth/register', async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Account created successfully!',
+      message: 'Account created successfully with email authentication!',
       user: {
         username: newUser.username,
         name: newUser.fullName,

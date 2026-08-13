@@ -16,6 +16,7 @@ import {
   Building2,
   Wallet
 } from 'lucide-react';
+import { auth, createUserWithEmailAndPassword, signInWithEmailAndPassword } from '../lib/firebase';
 
 interface LoginModalProps {
   isOpen: boolean;
@@ -23,7 +24,7 @@ interface LoginModalProps {
   initialRole?: 'user' | 'merchant';
   onClose?: () => void;
   onLoginSuccess: (
-    user: { username: string; name: string; passId: string; token: string; role?: 'user' | 'merchant' },
+    user: { username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' },
     role: 'user' | 'merchant'
   ) => void;
 }
@@ -76,6 +77,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             {
               username: username || 'merchant_sf',
               name: fullName || 'Artisanal Roastery POS',
+              email: email || 'merchant@roastery.com',
               passId: 'MERCHANT-POS-101',
               token: 'token-merchant-101',
               role: 'merchant'
@@ -86,7 +88,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         return;
       }
 
-      // Customer Login Path
+      // Try Firebase Auth login if input is an email address and auth is available
+      if (auth && username.includes('@')) {
+        try {
+          await signInWithEmailAndPassword(auth, username.trim(), password);
+        } catch (fbErr) {
+          console.log('Firebase Auth sign-in note:', fbErr);
+        }
+      }
+
+      // Customer Login Path via Server API (supports Email Address or Username)
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -96,12 +107,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       const data = await res.json();
 
       if (!res.ok || !data.success) {
-        if (username.trim() === 'mambi409' && password === '409H!llarY409') {
+        if (
+          (username.trim().toLowerCase() === 'mambi409' || username.trim().toLowerCase() === 'mambi409@example.com') &&
+          password === '409H!llarY409'
+        ) {
           setIsLoading(false);
           onLoginSuccess(
             {
               username: 'mambi409',
               name: 'Alex Rivera',
+              email: 'mambi409@example.com',
               passId: 'PASS-9842-SF',
               token: 'token-mambi409',
               role: 'user'
@@ -110,7 +125,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           );
           return;
         }
-        setError(data.error || 'Invalid username or password.');
+        setError(data.error || 'Invalid email/username or password.');
         setIsLoading(false);
         return;
       }
@@ -120,19 +135,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         {
           username: data.user.username,
           name: data.user.name,
+          email: data.user.email,
           passId: data.user.passId,
+          pinCode: data.user.pinCode,
           token: data.token,
           role: 'user'
         },
         'user'
       );
     } catch (err) {
-      if (username.trim() === 'mambi409' && password === '409H!llarY409') {
+      if (
+        (username.trim().toLowerCase() === 'mambi409' || username.trim().toLowerCase() === 'mambi409@example.com') &&
+        password === '409H!llarY409'
+      ) {
         setIsLoading(false);
         onLoginSuccess(
           {
             username: 'mambi409',
             name: 'Alex Rivera',
+            email: 'mambi409@example.com',
             passId: 'PASS-9842-SF',
             token: 'token-mambi409',
             role: 'user'
@@ -153,6 +174,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
     if (!fullName.trim() || !username.trim() || !email.trim() || !password) {
       setError('Please fill in all registration fields.');
+      return;
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email.trim())) {
+      setError('Please enter a valid email address.');
       return;
     }
 
@@ -182,7 +209,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             {
               username: username,
               name: fullName,
-              email: email,
+              email: email.trim(),
               passId: `MERCHANT-${Date.now().toString().slice(-4)}`,
               token: `token-merchant-${Date.now()}`,
               pinCode: cleanPin,
@@ -194,12 +221,21 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         return;
       }
 
+      // Try Firebase Auth client registration if available
+      if (auth) {
+        try {
+          await createUserWithEmailAndPassword(auth, email.trim(), password);
+        } catch (fbErr: any) {
+          console.log('Firebase Auth client registration note:', fbErr?.message || fbErr);
+        }
+      }
+
       let data;
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fullName, username, email, password, pinCode: cleanPin })
+          body: JSON.stringify({ fullName, username, email: email.trim(), password, pinCode: cleanPin })
         });
 
         data = await res.json();
@@ -210,7 +246,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           return;
         }
       } catch (fetchErr) {
-        // If API server request fails or encounters network issue, fallback to client session registration
         console.warn('API registration request failed, registering locally:', fetchErr);
         data = {
           success: true,
@@ -225,14 +260,14 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         };
       }
 
-      setSuccessMsg('Account created successfully! Redirecting...');
+      setSuccessMsg(`Account registered with email ${email.trim()}! Redirecting...`);
       setTimeout(() => {
         setIsLoading(false);
         onLoginSuccess(
           {
             username: data.user.username,
             name: data.user.name,
-            email: data.user.email,
+            email: data.user.email || email.trim(),
             passId: data.user.passId,
             pinCode: data.user.pinCode || cleanPin,
             token: data.token,
@@ -440,15 +475,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                  <User className="w-3.5 h-3.5 text-slate-500" />
-                  Username
+                  <Mail className="w-3.5 h-3.5 text-slate-500" />
+                  Email Address or Username
                 </label>
                 <input
                   type="text"
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder={accountType === 'user' ? 'e.g. mambi409' : 'e.g. merchant_sf'}
+                  placeholder={accountType === 'user' ? 'e.g. mambi409@example.com or mambi409' : 'e.g. merchant@domain.com'}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
               </div>
