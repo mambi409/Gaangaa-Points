@@ -7,11 +7,11 @@ import { StoreFinder } from './components/CustomerView/StoreFinder';
 import { InteractiveMap } from './components/CustomerView/InteractiveMap';
 import { NavigationDrawer } from './components/CustomerView/NavigationDrawer';
 import { ScanEarnModal } from './components/CustomerView/ScanEarnModal';
-import { AIPerksAssistant } from './components/CustomerView/AIPerksAssistant';
 import { MerchantDashboard } from './components/MerchantView/MerchantDashboard';
 import { POSScannerTerminal } from './components/MerchantView/POSScannerTerminal';
 import { RewardCatalogManager } from './components/MerchantView/RewardCatalogManager';
 import { PushNotificationBroadcaster } from './components/MerchantView/PushNotificationBroadcaster';
+import { LoginModal } from './components/LoginModal';
 
 import {
   Store,
@@ -25,7 +25,18 @@ import { INITIAL_WALLET, INITIAL_USER_LOCATION } from './data/mockData';
 
 export default function App() {
   const [currentRole, setCurrentRole] = useState<'user' | 'merchant'>('user');
-  const [activeView, setActiveView] = useState<'wallet' | 'explore' | 'map' | 'assistant'>('wallet');
+  const [activeView, setActiveView] = useState<'wallet' | 'explore' | 'map'>('wallet');
+
+  // Authentication State
+  const [authUser, setAuthUser] = useState<{ username: string; name: string; passId: string; token: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem('omni_auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(!authUser);
 
   // Application State
   const [wallet, setWallet] = useState<UserWallet>(INITIAL_WALLET);
@@ -48,6 +59,19 @@ export default function App() {
   const [isPOSTerminalOpen, setIsPOSTerminalOpen] = useState(false);
   const [isAddRewardOpen, setIsAddRewardOpen] = useState(false);
   const [isPushBroadcasterOpen, setIsPushBroadcasterOpen] = useState(false);
+
+  // Auth Callbacks
+  const handleLoginSuccess = (user: { username: string; name: string; passId: string; token: string }) => {
+    setAuthUser(user);
+    localStorage.setItem('omni_auth_user', JSON.stringify(user));
+    setIsLoginModalOpen(false);
+  };
+
+  const handleLogout = () => {
+    setAuthUser(null);
+    localStorage.removeItem('omni_auth_user');
+    setIsLoginModalOpen(true);
+  };
 
   // Initial Data Fetching
   const fetchWalletData = async () => {
@@ -279,6 +303,9 @@ export default function App() {
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         activeView={activeView}
         onViewChange={setActiveView}
+        authUser={authUser}
+        onLogout={handleLogout}
+        onOpenLogin={() => setIsLoginModalOpen(true)}
       />
 
       {/* Notification Drawer */}
@@ -348,18 +375,6 @@ export default function App() {
                 onStartNavigation={handleStartNavigation}
               />
             )}
-
-            {activeView === 'assistant' && (
-              <AIPerksAssistant
-                wallet={wallet}
-                stores={stores}
-                onNavigateToStore={handleStartNavigation}
-                onSelectStore={(storeId) => {
-                  const s = stores.find((item) => item.id === storeId);
-                  if (s) setSelectedStore(s);
-                }}
-              />
-            )}
           </>
         ) : (
           /* Merchant Dashboard View */
@@ -423,6 +438,12 @@ export default function App() {
           onSendBroadcast={handleMerchantSendBroadcast}
         />
       )}
+
+      {/* Customer Login Modal - Mandatory for anonymous users */}
+      <LoginModal
+        isOpen={isLoginModalOpen || !authUser}
+        onLoginSuccess={handleLoginSuccess}
+      />
     </div>
   );
 }

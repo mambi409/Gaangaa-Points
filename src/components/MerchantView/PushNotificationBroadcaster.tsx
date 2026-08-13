@@ -16,7 +16,7 @@ export const PushNotificationBroadcaster: React.FC<PushNotificationBroadcasterPr
   activeStore,
   onSendBroadcast
 }) => {
-  const [title, setTitle] = useState(`⚡ Flash Perks at ${activeStore.name}!`);
+  const [title, setTitle] = useState(`⚡ Flash Rewards at ${activeStore.name}!`);
   const [body, setBody] = useState(
     `Earn 2x bonus points on all store purchases until 6:00 PM today. Redeem points for free rewards!`
   );

@@ -55,6 +55,120 @@ let transactionsData: Transaction[] = [...INITIAL_TRANSACTIONS];
 let notificationsData: NotificationMessage[] = [...INITIAL_NOTIFICATIONS];
 let merchantStatsData = { ...INITIAL_MERCHANT_STATS };
 
+// Registered users database
+interface RegisteredUser {
+  username: string;
+  password: string;
+  fullName: string;
+  email: string;
+  passId: string;
+}
+
+const usersDB: RegisteredUser[] = [
+  {
+    username: 'mambi409',
+    password: '409H!llarY409',
+    fullName: 'Alex Rivera',
+    email: 'mambi409@example.com',
+    passId: 'PASS-9842-SF'
+  }
+];
+
+// API ROUTE: User Authentication (Login)
+app.post('/api/auth/login', (req, res) => {
+  try {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password are required.' });
+    }
+
+    const foundUser = usersDB.find(
+      (u) => u.username.toLowerCase() === username.trim().toLowerCase()
+    );
+
+    if (foundUser && foundUser.password === password) {
+      return res.json({
+        success: true,
+        user: {
+          username: foundUser.username,
+          name: foundUser.fullName,
+          passId: foundUser.passId,
+          pointsBalance: walletData.pointsBalance,
+          currentTier: walletData.currentTier
+        },
+        token: `token-${Date.now()}-${foundUser.username}`
+      });
+    }
+
+    return res.status(401).json({
+      success: false,
+      error: 'Invalid username or password. Please check your credentials.'
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Authentication failed' });
+  }
+});
+
+// API ROUTE: User Registration
+app.post('/api/auth/register', (req, res) => {
+  try {
+    const { fullName, username, email, password } = req.body;
+
+    if (!fullName || !username || !email || !password) {
+      return res.status(400).json({ error: 'All fields (Full Name, Username, Email, Password) are required.' });
+    }
+
+    if (password.length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+    }
+
+    const cleanUsername = username.trim();
+    const cleanEmail = email.trim().toLowerCase();
+
+    const existingUser = usersDB.find(
+      (u) => u.username.toLowerCase() === cleanUsername.toLowerCase() || u.email.toLowerCase() === cleanEmail
+    );
+
+    if (existingUser) {
+      if (existingUser.username.toLowerCase() === cleanUsername.toLowerCase()) {
+        return res.status(400).json({ error: 'Username is already taken. Please choose another.' });
+      }
+      return res.status(400).json({ error: 'Email address is already registered.' });
+    }
+
+    const newPassId = `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`;
+    const newUser: RegisteredUser = {
+      username: cleanUsername,
+      password,
+      fullName: fullName.trim(),
+      email: cleanEmail,
+      passId: newPassId
+    };
+
+    usersDB.push(newUser);
+
+    // Update wallet user name for new registration session
+    walletData.userName = newUser.fullName;
+    walletData.passId = newUser.passId;
+
+    return res.status(201).json({
+      success: true,
+      message: 'Account created successfully!',
+      user: {
+        username: newUser.username,
+        name: newUser.fullName,
+        passId: newUser.passId,
+        pointsBalance: walletData.pointsBalance,
+        currentTier: walletData.currentTier
+      },
+      token: `token-${Date.now()}-${newUser.username}`
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
 // Helper: Haversine Distance in Kilometers
 function calculateDistanceKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
   const R = 6371; // Earth radius in km
@@ -191,7 +305,7 @@ app.post('/api/wallet/earn', (req, res) => {
       const tierNotif: NotificationMessage = {
         id: `notif-tier-${Date.now()}`,
         title: `🏆 Level Up! You are now a ${newTier} Member!`,
-        body: `Congratulations! Your lifetime points crossed the threshold. Enjoy exclusive ${newTier} perks!`,
+        body: `Congratulations! Your lifetime points crossed the threshold. Enjoy exclusive ${newTier} tier rewards!`,
         type: 'tier',
         timestamp: new Date().toISOString(),
         read: false,
@@ -254,7 +368,7 @@ app.post('/api/wallet/scan-qr-checkin', (req, res) => {
       const tierNotif: NotificationMessage = {
         id: `notif-tier-${Date.now()}`,
         title: `🏆 Level Up! You are now a ${newTier} Member!`,
-        body: `Congratulations! Your lifetime points crossed the threshold. Enjoy exclusive ${newTier} perks!`,
+        body: `Congratulations! Your lifetime points crossed the threshold. Enjoy exclusive ${newTier} tier rewards!`,
         type: 'tier',
         timestamp: new Date().toISOString(),
         read: false,
@@ -671,7 +785,7 @@ app.post('/api/ai/perks', async (req, res) => {
       // Fallback response if GEMINI_API_KEY is not configured
       if (queryType === 'merchant_promo_copy') {
         return res.json({
-          generatedPromo: `⚡ FLASH PERK: Visit ${storeContext?.name || 'our store'} today to earn 2x bonus points on every purchase! Redeem your points for exclusive rewards in our digital wallet.`
+          generatedPromo: `⚡ FLASH REWARD: Visit ${storeContext?.name || 'our store'} today to earn 2x bonus points on every purchase! Redeem your points for exclusive rewards in our digital wallet.`
         });
       }
       return res.json({

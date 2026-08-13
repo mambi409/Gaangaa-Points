@@ -16,7 +16,7 @@ export interface Store {
   distanceKm?: number;
   openHours: string;
   phone: string;
-  perks: string[];
+  perks?: string[];
   featuredReward?: string;
 }
 

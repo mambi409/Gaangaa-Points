@@ -184,7 +184,7 @@ export const DigitalWallet: React.FC<DigitalWalletProps> = ({
             {/* Tier Benefits List */}
             <div className="space-y-2 text-xs">
               <div className="text-slate-500 font-bold mb-1 uppercase tracking-wider text-[10px]">
-                Active {wallet.currentTier} Tier Perks
+                Active {wallet.currentTier} Tier Benefits
               </div>
               <div className="flex items-center gap-2 text-slate-700">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />

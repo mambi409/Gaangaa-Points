@@ -312,7 +312,7 @@ export const INITIAL_NOTIFICATIONS: NotificationMessage[] = [
   },
   {
     id: 'notif-3',
-    title: '🏆 Gold Member Perk Unlocked',
+    title: '🏆 Gold Member Tier Reward Unlocked',
     body: 'Congratulations! You now get free alterations at Urban Threads Boutique and 1.5x points speed!',
     type: 'tier',
     timestamp: new Date(Date.now() - 86400000 * 10).toISOString(),

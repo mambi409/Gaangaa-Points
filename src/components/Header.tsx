@@ -1,5 +1,5 @@
 import React from 'react';
-import { Store, Wallet, ShieldCheck, Bell, MapPin, Sparkles, Navigation } from 'lucide-react';
+import { Store, Wallet, ShieldCheck, Bell, MapPin, Sparkles, Navigation, UserCheck, LogOut, LogIn } from 'lucide-react';
 import { UserWallet } from '../types';
 
 interface HeaderProps {
@@ -8,8 +8,11 @@ interface HeaderProps {
   wallet: UserWallet;
   unreadNotifsCount: number;
   onOpenNotifications: () => void;
-  activeView: 'wallet' | 'explore' | 'map' | 'assistant';
-  onViewChange: (view: 'wallet' | 'explore' | 'map' | 'assistant') => void;
+  activeView: 'wallet' | 'explore' | 'map';
+  onViewChange: (view: 'wallet' | 'explore' | 'map') => void;
+  authUser: { username: string; name: string } | null;
+  onLogout: () => void;
+  onOpenLogin: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,7 +22,10 @@ export const Header: React.FC<HeaderProps> = ({
   unreadNotifsCount,
   onOpenNotifications,
   activeView,
-  onViewChange
+  onViewChange,
+  authUser,
+  onLogout,
+  onOpenLogin
 }) => {
   return (
     <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 text-slate-900 shadow-xs">
@@ -75,22 +81,37 @@ export const Header: React.FC<HeaderProps> = ({
               <Navigation className="w-3.5 h-3.5" />
               Map & Route
             </button>
-            <button
-              onClick={() => onViewChange('assistant')}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-lg text-xs font-bold transition ${
-                activeView === 'assistant'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-white/60'
-              }`}
-            >
-              <Sparkles className="w-3.5 h-3.5 text-amber-300" />
-              AI Perks
-            </button>
           </nav>
         )}
 
         {/* Right Section: Role Selector, Points Chip & Notifications */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 sm:gap-3">
+          {/* Authenticated User Status & Logout */}
+          {authUser ? (
+            <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs">
+              <div className="flex items-center gap-1.5 px-2 py-0.5 text-slate-800 font-extrabold">
+                <UserCheck className="w-3.5 h-3.5 text-emerald-600" />
+                <span className="hidden lg:inline">{authUser.username}</span>
+              </div>
+              <button
+                onClick={onLogout}
+                title="Log out of session"
+                className="p-1 rounded-lg hover:bg-slate-200 text-slate-500 hover:text-rose-600 transition flex items-center gap-1 text-[11px] font-bold"
+              >
+                <LogOut className="w-3.5 h-3.5" />
+                <span className="hidden xl:inline">Logout</span>
+              </button>
+            </div>
+          ) : (
+            <button
+              onClick={onOpenLogin}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition shadow-2xs"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              Sign In
+            </button>
+          )}
+
           {/* User Points Badge */}
           {currentRole === 'user' && (
             <div className="hidden sm:flex items-center gap-2 bg-blue-50 hover:bg-blue-100/80 px-3 py-1.5 rounded-xl border border-blue-200/80 text-blue-900 cursor-pointer transition">
@@ -177,15 +198,6 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Navigation className="w-4 h-4" />
             Map
-          </button>
-          <button
-            onClick={() => onViewChange('assistant')}
-            className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg ${
-              activeView === 'assistant' ? 'text-blue-600' : 'text-slate-500'
-            }`}
-          >
-            <Sparkles className="w-4 h-4" />
-            AI Perks
           </button>
         </div>
       )}

@@ -192,7 +192,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           </div>
           <h3 className="font-extrabold text-lg text-slate-900">Create Reward Offer</h3>
           <p className="text-xs text-slate-600 mt-1">
-            Add new discount vouchers, free items, or tier perks with Gemini AI copywriter.
+            Add new discount vouchers, free items, or tier rewards with Gemini AI copywriter.
           </p>
           <div className="mt-4 flex items-center gap-1 text-xs font-bold text-emerald-600">
             Add Store Reward <ChevronRight className="w-4 h-4" />
