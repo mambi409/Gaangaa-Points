@@ -110,94 +110,86 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       }
 
       // Customer Login Path via Server API (supports Email Address or Username)
-      const res = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password })
-      });
+      let res: Response | null = null;
+      let data: any = null;
 
-      const data = await res.json();
+      try {
+        res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password })
+        });
+        data = await res.json();
+      } catch (fetchErr) {
+        console.warn('Login fetch/JSON parse error:', fetchErr);
+      }
 
-      if (!res.ok || !data.success) {
-        // Direct Client-side Firestore Fallback Verification
-        if (db) {
-          try {
-            const clean = username.trim().toLowerCase();
-            let userDoc: any = null;
-
-            // Direct Firestore document check
-            const userRef = doc(db, 'users', clean);
-            const userSnap = await getDoc(userRef);
-            if (userSnap.exists()) {
-              userDoc = userSnap.data();
-            } else {
-              // Email query check
-              const usersCol = collection(db, 'users');
-              const qEmail = query(usersCol, where('email', '==', clean));
-              const emailSnap = await getDocs(qEmail);
-              if (!emailSnap.empty) {
-                userDoc = emailSnap.docs[0].data();
-              }
-            }
-
-            if (userDoc && userDoc.password === password) {
-              setIsLoading(false);
-              onLoginSuccess(
-                {
-                  username: userDoc.username,
-                  name: userDoc.fullName,
-                  email: userDoc.email,
-                  passId: userDoc.passId,
-                  pinCode: userDoc.pinCode || '12345',
-                  token: `token-fs-${Date.now()}-${userDoc.username}`,
-                  role: 'user'
-                },
-                'user'
-              );
-              return;
-            }
-          } catch (fsErr) {
-            console.log('Client Firestore fallback check error:', fsErr);
-          }
-        }
-
-        if (
-          (username.trim().toLowerCase() === 'mambi409' || username.trim().toLowerCase() === 'mambi409@example.com') &&
-          password === '409H!llarY409'
-        ) {
-          setIsLoading(false);
-          onLoginSuccess(
-            {
-              username: 'mambi409',
-              name: 'Alex Rivera',
-              email: 'mambi409@example.com',
-              passId: 'PASS-9842-SF',
-              token: 'token-mambi409',
-              role: 'user'
-            },
-            'user'
-          );
-          return;
-        }
-        setError(data?.error || 'Invalid email/username or password.');
+      if (res && res.ok && data?.success) {
         setIsLoading(false);
+        onLoginSuccess(
+          {
+            username: data.user.username,
+            name: data.user.name,
+            email: data.user.email,
+            passId: data.user.passId,
+            pinCode: data.user.pinCode,
+            token: data.token,
+            role: 'user'
+          },
+          'user'
+        );
         return;
       }
 
-      setIsLoading(false);
-      onLoginSuccess(
-        {
-          username: data.user.username,
-          name: data.user.name,
-          email: data.user.email,
-          passId: data.user.passId,
-          pinCode: data.user.pinCode,
-          token: data.token,
-          role: 'user'
-        },
-        'user'
-      );
-    } catch (err) {
+      // Direct Client-side Firestore Fallback Verification
+      if (db) {
+        try {
+          const clean = username.trim().toLowerCase();
+          let userDoc: any = null;
+
+          // Direct Firestore document check
+          const userRef = doc(db, 'users', clean);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            userDoc = userSnap.data();
+          } else {
+            // Email query check
+            const usersCol = collection(db, 'users');
+            const qEmail = query(usersCol, where('email', '==', clean));
+            const emailSnap = await getDocs(qEmail);
+            if (!emailSnap.empty) {
+              userDoc = emailSnap.docs[0].data();
+            } else {
+              // Username query check
+              const qUser = query(usersCol, where('username', '==', clean));
+              const userSnap2 = await getDocs(qUser);
+              if (!userSnap2.empty) {
+                userDoc = userSnap2.docs[0].data();
+              }
+            }
+          }
+
+          if (userDoc && userDoc.password === password) {
+            setIsLoading(false);
+            onLoginSuccess(
+              {
+                username: userDoc.username,
+                name: userDoc.fullName || userDoc.username,
+                email: userDoc.email,
+                passId: userDoc.passId || `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
+                pinCode: userDoc.pinCode || '12345',
+                token: `token-fs-${Date.now()}-${userDoc.username}`,
+                role: 'user'
+              },
+              'user'
+            );
+            return;
+          }
+        } catch (fsErr) {
+          console.log('Client Firestore fallback check error:', fsErr);
+        }
+      }
+
       if (
         (username.trim().toLowerCase() === 'mambi409' || username.trim().toLowerCase() === 'mambi409@example.com') &&
         password === '409H!llarY409'
@@ -216,7 +208,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         );
         return;
       }
-      setError('Connection error. Please try again.');
+
+      setError(data?.error || 'Invalid email/username or password.');
+      setIsLoading(false);
+    } catch (err) {
+      setError('An unexpected error occurred. Please try again.');
       setIsLoading(false);
     }
   };
