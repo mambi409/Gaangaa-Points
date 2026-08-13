@@ -12,19 +12,11 @@ import {
   query,
   where
 } from 'firebase/firestore';
-import fs from 'fs';
+import firebaseConfigData from '../../firebase-applet-config.json';
 
-let firebaseConfig: any = null;
-try {
-  if (fs.existsSync('./firebase-applet-config.json')) {
-    const raw = fs.readFileSync('./firebase-applet-config.json', 'utf8');
-    firebaseConfig = JSON.parse(raw);
-  }
-} catch (e) {
-  console.error('Failed to load firebase-applet-config.json:', e);
-}
+const firebaseConfig = firebaseConfigData || null;
 
-const app = firebaseConfig
+const app = firebaseConfig && firebaseConfig.projectId
   ? getApps().length === 0
     ? initializeApp(firebaseConfig)
     : getApp()
@@ -46,3 +38,4 @@ export {
   query,
   where
 };
+
