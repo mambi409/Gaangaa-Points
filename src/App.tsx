@@ -128,7 +128,7 @@ export default function App() {
 
   // Auth Callbacks
   const handleLoginSuccess = (
-    user: { username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' | 'admin' },
+    user: { username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' | 'admin'; storeId?: string },
     role: 'user' | 'merchant' | 'admin'
   ) => {
     const userWithRole = { ...user, role };
@@ -141,8 +141,12 @@ export default function App() {
       setCurrentRole('admin');
     } else if (role === 'user') {
       setActiveView('wallet'); // Customer goes to Digital Wallet page
+      fetchWalletData();
     } else {
       setCurrentRole('merchant'); // Merchant goes to Merchant Dashboard
+      const candidateStoreId = user.storeId || `store-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      setSelectedMerchantStoreId(candidateStoreId);
+      fetchStoresData();
     }
   };
 

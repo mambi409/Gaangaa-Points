@@ -113,18 +113,24 @@ export async function fetchOrSeedMembers(): Promise<{ users: AdminUserItem[]; fr
 
       if (!snap.empty) {
         const firestoreUsers: AdminUserItem[] = [];
+        const seenUsernames = new Set<string>();
+
         snap.forEach((docSnap) => {
           const d = docSnap.data() as any;
+          const uName = (d.username || docSnap.id).toLowerCase();
+          if (seenUsernames.has(uName)) return;
+          seenUsernames.add(uName);
+
           firestoreUsers.push({
             username: d.username || docSnap.id,
             fullName: d.fullName || d.name || d.username || docSnap.id,
             email: d.email || `${d.username || docSnap.id}@omniloyalty.internal`,
-            passId: d.passId || `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
-            role: d.role || 'user',
+            passId: d.passId || (d.role === 'merchant' ? `MERCHANT-POS-${Math.floor(100 + Math.random() * 900)}` : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`),
+            role: d.role || (uName === 'mambiadmin' ? 'admin' : (uName.startsWith('merchant') ? 'merchant' : 'user')),
             pinCode: d.pinCode ? '••••• (Set)' : 'Unset',
-            pointsBalance: d.pointsBalance ?? 100,
-            lifetimePoints: d.lifetimePoints ?? (d.pointsBalance ?? 100) + 200,
-            currentTier: d.currentTier || 'Bronze',
+            pointsBalance: d.pointsBalance ?? (d.role === 'merchant' ? 10000 : 100),
+            lifetimePoints: d.lifetimePoints ?? (d.role === 'merchant' ? 25000 : (d.pointsBalance ?? 100) + 200),
+            currentTier: d.currentTier || (d.role === 'merchant' ? 'Platinum' : 'Bronze'),
             status: d.status || 'active',
             createdAt: d.createdAt || new Date().toISOString()
           });

@@ -83,25 +83,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setIsLoading(true);
 
     try {
-      if (accountType === 'merchant') {
-        // Merchant Login Path
-        setTimeout(() => {
-          setIsLoading(false);
-          onLoginSuccess(
-            {
-              username: username || 'merchant_sf',
-              name: fullName || 'Artisanal Roastery POS',
-              email: email || 'merchant@roastery.com',
-              passId: 'MERCHANT-POS-101',
-              token: 'token-merchant-101',
-              role: 'merchant'
-            },
-            'merchant'
-          );
-        }, 500);
-        return;
-      }
-
       // Try Firebase Auth login if input is an email address and auth is available
       if (auth && username.includes('@')) {
         try {
@@ -111,7 +92,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         }
       }
 
-      // Customer Login Path via Server API (supports Email Address or Username)
+      // Login Path via Server API (supports Email Address or Username for Customer, Merchant, Admin)
       let res: Response | null = null;
       let data: any = null;
 
@@ -174,13 +155,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
           if (userDoc && userDoc.password === password) {
             setIsLoading(false);
-            const userRole = userDoc.role || (userDoc.username.toLowerCase() === 'mambiadmin' ? 'admin' : 'user');
+            const userRole = userDoc.role || (userDoc.username.toLowerCase() === 'mambiadmin' ? 'admin' : (accountType === 'merchant' ? 'merchant' : 'user'));
             onLoginSuccess(
               {
                 username: userDoc.username,
                 name: userDoc.fullName || userDoc.username,
                 email: userDoc.email,
-                passId: userDoc.passId || (userRole === 'admin' ? 'ADMIN-409-SF' : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`),
+                passId: userDoc.passId || (userRole === 'admin' ? 'ADMIN-409-SF' : userRole === 'merchant' ? `MERCHANT-POS-${Math.floor(100 + Math.random() * 900)}` : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`),
                 pinCode: userDoc.pinCode || '12345',
                 token: `token-fs-${Date.now()}-${userDoc.username}`,
                 role: userRole
@@ -234,6 +215,25 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         return;
       }
 
+      if (
+        (username.trim().toLowerCase() === 'merchant_sf' || username.trim().toLowerCase() === 'merchant@roastery.com') &&
+        password === 'posSecret2026'
+      ) {
+        setIsLoading(false);
+        onLoginSuccess(
+          {
+            username: 'merchant_sf',
+            name: 'Artisanal Roastery POS',
+            email: 'merchant@roastery.com',
+            passId: 'MERCHANT-POS-101',
+            token: 'token-merchant-101',
+            role: 'merchant'
+          },
+          'merchant'
+        );
+        return;
+      }
+
       setError(data?.error || 'Invalid email/username or password.');
       setIsLoading(false);
     } catch (err) {
@@ -277,60 +277,86 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     setIsLoading(true);
 
     try {
-      if (accountType === 'merchant') {
-        setTimeout(() => {
-          setIsLoading(false);
-          onLoginSuccess(
-            {
-              username: username,
-              name: fullName,
-              email: email.trim(),
-              passId: `MERCHANT-${Date.now().toString().slice(-4)}`,
-              token: `token-merchant-${Date.now()}`,
-              pinCode: cleanPin,
-              role: 'merchant'
-            },
-            'merchant'
-          );
-        }, 600);
-        return;
-      }
+      const isMerchant = accountType === 'merchant';
+      const cleanUsername = username.trim();
+      const cleanEmail = email.trim().toLowerCase();
+      const passId = isMerchant
+        ? `MERCHANT-POS-${Math.floor(100 + Math.random() * 900)}`
+        : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`;
 
-      // Try Firebase Auth client registration if available
+      // 1. Try Firebase Auth client registration if available
       if (auth) {
         try {
-          await createUserWithEmailAndPassword(auth, email.trim(), password);
+          await createUserWithEmailAndPassword(auth, cleanEmail, password);
         } catch (fbErr: any) {
           console.log('Firebase Auth client registration note:', fbErr?.message || fbErr);
         }
       }
 
-      // Dual-key Firestore Client Sync during Registration
+      // 2. Dual-key Firestore Client Sync during Registration (User + Store if merchant)
       if (db) {
         try {
           const userObj = {
-            username: username.trim(),
+            username: cleanUsername,
             password,
             fullName: fullName.trim(),
-            email: email.trim().toLowerCase(),
-            passId: `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
-            pinCode: cleanPin
+            email: cleanEmail,
+            passId,
+            pinCode: cleanPin,
+            role: isMerchant ? 'merchant' : 'user',
+            pointsBalance: isMerchant ? 10000 : 500,
+            lifetimePoints: isMerchant ? 25000 : 500,
+            currentTier: isMerchant ? 'Platinum' : 'Bronze',
+            status: 'active',
+            createdAt: new Date().toISOString()
           };
-          await setDoc(doc(db, 'users', username.trim().toLowerCase()), userObj);
-          if (email.trim()) {
-            await setDoc(doc(db, 'users', email.trim().toLowerCase()), userObj);
+          await setDoc(doc(db, 'users', cleanUsername.toLowerCase()), userObj);
+          await setDoc(doc(db, 'users', cleanEmail), userObj);
+
+          if (isMerchant) {
+            const storeId = `store-${cleanUsername.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+            const storeObj = {
+              id: storeId,
+              name: fullName.trim(),
+              category: 'Coffee',
+              address: '450 Sutter St',
+              city: 'San Francisco',
+              lat: 37.7891,
+              lng: -122.4082,
+              rating: 5.0,
+              reviewCount: 1,
+              image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80',
+              pointsRate: 10,
+              description: `${fullName.trim()} Partner Store Location`,
+              openHours: '8:00 AM - 8:00 PM',
+              phone: '(415) 555-0100',
+              email: cleanEmail,
+              perks: ['Loyalty Rewards', 'Member Deals'],
+              managerName: fullName.trim(),
+              totalPointsRewarded: 0,
+              totalPointsRedeemed: 0
+            };
+            await setDoc(doc(db, 'stores', storeId), storeObj);
           }
         } catch (fsErr) {
           console.warn('Client-side Firestore registration sync warning:', fsErr);
         }
       }
 
+      // 3. Register via server API
       let data;
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ fullName, username, email: email.trim(), password, pinCode: cleanPin })
+          body: JSON.stringify({
+            fullName: fullName.trim(),
+            username: cleanUsername,
+            email: cleanEmail,
+            password,
+            pinCode: cleanPin,
+            role: accountType
+          })
         });
 
         data = await res.json();
@@ -345,30 +371,37 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         data = {
           success: true,
           user: {
-            username: username.trim(),
+            username: cleanUsername,
             name: fullName.trim(),
-            email: email.trim(),
-            passId: `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
-            pinCode: cleanPin
+            email: cleanEmail,
+            passId,
+            pinCode: cleanPin,
+            role: accountType
           },
-          token: `token-${Date.now()}-${username.trim()}`
+          token: `token-${Date.now()}-${cleanUsername}`
         };
       }
 
-      setSuccessMsg(`Account registered with email ${email.trim()}! Redirecting...`);
+      setSuccessMsg(
+        isMerchant
+          ? `Merchant account registered for ${fullName.trim()}! Redirecting to Merchant Dashboard...`
+          : `Account registered with email ${cleanEmail}! Redirecting...`
+      );
+
       setTimeout(() => {
         setIsLoading(false);
+        const finalRole = isMerchant ? 'merchant' : 'user';
         onLoginSuccess(
           {
             username: data.user.username,
             name: data.user.name,
-            email: data.user.email || email.trim(),
-            passId: data.user.passId,
+            email: data.user.email || cleanEmail,
+            passId: data.user.passId || passId,
             pinCode: data.user.pinCode || cleanPin,
             token: data.token,
-            role: 'user'
+            role: finalRole
           },
-          'user'
+          finalRole
         );
       }, 800);
     } catch (err) {

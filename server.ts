@@ -138,7 +138,14 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (foundUser && foundUser.password === password) {
       const pinCode = foundUser.pinCode || walletData.pinCode || '12345';
-      const userRole = foundUser.role || (foundUser.username.toLowerCase() === 'mambiadmin' ? 'admin' : 'user');
+      const userRole = foundUser.role || (foundUser.username.toLowerCase() === 'mambiadmin' ? 'admin' : (foundUser.username.toLowerCase().startsWith('merchant') ? 'merchant' : 'user'));
+      
+      // If merchant, find their store
+      let merchantStore = null;
+      if (userRole === 'merchant') {
+        merchantStore = storesData.find((s) => s.id === `store-${foundUser.username.toLowerCase()}` || s.name.toLowerCase() === foundUser.fullName.toLowerCase()) || storesData[0];
+      }
+
       return res.json({
         success: true,
         user: {
@@ -148,9 +155,11 @@ app.post('/api/auth/login', async (req, res) => {
           passId: foundUser.passId,
           pinCode: pinCode,
           role: userRole,
-          pointsBalance: walletData.pointsBalance,
-          currentTier: walletData.currentTier
+          storeId: merchantStore ? merchantStore.id : undefined,
+          pointsBalance: userRole === 'merchant' ? (foundUser.pointsBalance ?? 14500) : walletData.pointsBalance,
+          currentTier: userRole === 'merchant' ? (foundUser.currentTier ?? 'Platinum') : walletData.currentTier
         },
+        store: merchantStore,
         token: `token-${Date.now()}-${foundUser.username}`
       });
     }
@@ -164,10 +173,10 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
-// API ROUTE: User Registration
+// API ROUTE: User & Merchant Registration
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { fullName, username, email, password, pinCode } = req.body;
+    const { fullName, username, email, password, pinCode, role, storeCategory, storeAddress, storePhone, storeCity } = req.body;
 
     if (!fullName || !username || !email || !password) {
       return res.status(400).json({ error: 'All fields (Full Name, Username, Email, Password, PIN) are required.' });
@@ -200,40 +209,99 @@ app.post('/api/auth/register', async (req, res) => {
       return res.status(400).json({ error: 'Email address is already registered.' });
     }
 
-    const newPassId = `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`;
+    const isMerchant = role === 'merchant';
+    const newPassId = isMerchant
+      ? `MERCHANT-POS-${Math.floor(100 + Math.random() * 900)}`
+      : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`;
+
     const newUser: RegisteredUser = {
       username: cleanUsername,
       password,
       fullName: fullName.trim(),
       email: cleanEmail,
       passId: newPassId,
-      pinCode: cleanPin
+      pinCode: cleanPin,
+      role: isMerchant ? 'merchant' : 'user',
+      pointsBalance: isMerchant ? 10000 : 500,
+      lifetimePoints: isMerchant ? 25000 : 500,
+      currentTier: isMerchant ? 'Platinum' : 'Bronze',
+      status: 'active',
+      createdAt: new Date().toISOString()
     };
 
     await persistUser(newUser);
 
-    // Update wallet user details for new registration session
-    walletData.userName = newUser.fullName;
-    walletData.userEmail = newUser.email;
-    walletData.passId = newUser.passId;
-    walletData.pinCode = newUser.pinCode;
-    await persistWallet();
+    let createdStore: Store | null = null;
+    if (isMerchant) {
+      const storeId = `store-${cleanUsername.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+      createdStore = {
+        id: storeId,
+        name: fullName.trim(),
+        category: storeCategory || 'Coffee',
+        address: storeAddress || '450 Sutter St',
+        city: storeCity || 'San Francisco',
+        lat: 37.7891 + (Math.random() - 0.5) * 0.02,
+        lng: -122.4082 + (Math.random() - 0.5) * 0.02,
+        rating: 5.0,
+        reviewCount: 1,
+        image: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80',
+        pointsRate: 10,
+        description: `${fullName.trim()} - Partner Store Location`,
+        openHours: '8:00 AM - 8:00 PM',
+        phone: storePhone || '(415) 555-0100',
+        email: cleanEmail,
+        perks: ['Loyalty Rewards', 'Member Deals'],
+        managerName: fullName.trim(),
+        totalPointsRewarded: 0,
+        totalPointsRedeemed: 0
+      };
+
+      const existingStoreIdx = storesData.findIndex(s => s.id === storeId);
+      if (existingStoreIdx >= 0) {
+        storesData[existingStoreIdx] = createdStore;
+      } else {
+        storesData.push(createdStore);
+      }
+      await persistStore(createdStore);
+
+      const auditLog: SystemAuditLog = {
+        id: `audit-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        title: `Merchant Account & Store Registered: ${createdStore.name}`,
+        type: 'security',
+        severity: 'success',
+        details: `Merchant user @${newUser.username} registered with store "${createdStore.name}" (${createdStore.category}) at ${createdStore.address}.`,
+        user: newUser.username
+      };
+      await persistAuditLog(auditLog);
+    } else {
+      // Update wallet user details for new customer registration session
+      walletData.userName = newUser.fullName;
+      walletData.userEmail = newUser.email;
+      walletData.passId = newUser.passId;
+      walletData.pinCode = newUser.pinCode;
+      await persistWallet();
+    }
 
     return res.status(201).json({
       success: true,
-      message: 'Account created successfully with email authentication!',
+      message: isMerchant ? 'Merchant account and store created successfully!' : 'Account created successfully with email authentication!',
       user: {
         username: newUser.username,
         name: newUser.fullName,
         email: newUser.email,
         passId: newUser.passId,
         pinCode: newUser.pinCode,
-        pointsBalance: walletData.pointsBalance,
-        currentTier: walletData.currentTier
+        role: newUser.role,
+        storeId: createdStore ? createdStore.id : undefined,
+        pointsBalance: newUser.pointsBalance,
+        currentTier: newUser.currentTier
       },
+      store: createdStore,
       token: `token-${Date.now()}-${newUser.username}`
     });
   } catch (err) {
+    console.error('Registration error:', err);
     res.status(500).json({ error: 'Registration failed' });
   }
 });

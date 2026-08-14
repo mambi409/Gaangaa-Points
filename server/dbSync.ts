@@ -520,7 +520,10 @@ export async function findUser(identifier: string): Promise<RegisteredUser | nul
 
 // Write helper functions
 export async function persistUser(user: RegisteredUser) {
-  if (!usersDB.some((u) => u.username.toLowerCase() === user.username.toLowerCase())) {
+  const existingIdx = usersDB.findIndex((u) => u.username.toLowerCase() === user.username.toLowerCase());
+  if (existingIdx >= 0) {
+    usersDB[existingIdx] = user;
+  } else {
     usersDB.push(user);
   }
   if (db) {
