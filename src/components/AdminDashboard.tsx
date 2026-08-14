@@ -49,7 +49,9 @@ import {
   CheckSquare,
   LogOut,
   SlidersHorizontal,
-  ChevronDown
+  ChevronDown,
+  Download,
+  FileSpreadsheet
 } from 'lucide-react';
 import {
   AdminTask,
@@ -110,6 +112,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<AdminUserItem | null>(null);
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<AdminUserItem | null>(null);
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
+  const [isRetrievingUsers, setIsRetrievingUsers] = useState(false);
+  const [lastUsersSyncTime, setLastUsersSyncTime] = useState<string | null>(null);
+  const [usersViewMode, setUsersViewMode] = useState<'table' | 'cards'>('table');
 
   // Create User Form
   const [newUsername, setNewUsername] = useState('');
@@ -200,6 +205,57 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const handleRefresh = () => {
     setIsRefreshing(true);
     fetchAdminData();
+  };
+
+  const handleRetrieveUsers = async () => {
+    setIsRetrievingUsers(true);
+    try {
+      const res = await fetch('/api/admin/users');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.users && Array.isArray(data.users)) {
+          setRegisteredUsers(data.users);
+          setLastUsersSyncTime(new Date().toLocaleTimeString());
+          showToast(`Retrieved ${data.users.length} member accounts from cloud database`, 'success');
+        }
+      } else {
+        await fetchAdminData();
+        showToast('Retrieved member list from system ledger', 'info');
+      }
+    } catch (err) {
+      showToast('Error retrieving member list', 'error');
+    } finally {
+      setIsRetrievingUsers(false);
+    }
+  };
+
+  const handleExportUsersCSV = () => {
+    if (registeredUsers.length === 0) {
+      showToast('No users to export', 'info');
+      return;
+    }
+    const headers = ['Username', 'Full Name', 'Email', 'Pass ID', 'Role', 'Tier', 'Points Balance', 'Lifetime Points', 'Status', 'Created At'];
+    const rows = registeredUsers.map(u => [
+      u.username,
+      `"${(u.fullName || '').replace(/"/g, '""')}"`,
+      u.email || '',
+      u.passId || '',
+      u.role || 'user',
+      u.currentTier || 'Bronze',
+      u.pointsBalance ?? 0,
+      u.lifetimePoints ?? 0,
+      u.status || 'active',
+      u.createdAt || ''
+    ]);
+    const csvContent = 'data:text/csv;charset=utf-8,' + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `omni_members_accounts_${new Date().toISOString().slice(0, 10)}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast(`Exported ${registeredUsers.length} member accounts to CSV`, 'success');
   };
 
   // ================= TASK RUN HANDLER =================
@@ -670,10 +726,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </span>
             </button>
 
-            {/* 3. USERS MENU */}
+            {/* 3. MEMBERS ACCOUNTS MENU */}
             <button
               id="admin-menu-users"
-              onClick={() => setAdminMenu('users')}
+              onClick={() => {
+                setAdminMenu('users');
+                handleRetrieveUsers();
+              }}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
                 adminMenu === 'users'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
@@ -682,7 +741,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <div className="flex items-center gap-3 truncate">
                 <Users className="w-4 h-4 shrink-0" />
-                <span className="truncate">Users</span>
+                <span className="truncate">Members Accounts</span>
               </div>
               <span className="px-1.5 py-0.5 text-[10px] rounded bg-slate-800 text-slate-300 border border-slate-700">
                 {registeredUsers.length}
@@ -1301,30 +1360,91 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* ============================================================ */}
-        {/* VIEW 3: USERS (LIST USERS, VIEW DETAILS & BALANCE, EDIT)    */}
+        {/* VIEW 3: MEMBERS ACCOUNTS (RETRIEVE ALL USERS, VIEW & EDIT)  */}
         {/* ============================================================ */}
         {adminMenu === 'users' && (
           <div className="space-y-6">
-            {/* Users Header Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            {/* Members Accounts Header Bar */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
               <div>
-                <h1 className="text-2xl font-bold text-white tracking-tight">Users & Member Directory</h1>
+                <div className="flex items-center gap-2.5">
+                  <h1 className="text-2xl font-bold text-white tracking-tight">Members Accounts</h1>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                    {registeredUsers.length} Total
+                  </span>
+                </div>
                 <p className="text-sm text-slate-400 mt-1">
-                  View user details and point balances, edit accounts, or create new users manually.
+                  Retrieve, inspect, and manage all registered customer accounts, merchant POS terminals, and loyalty point balances.
                 </p>
               </div>
 
-              <button
-                id="admin-create-user-btn"
-                onClick={() => setIsCreateUserModalOpen(true)}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/25 transition"
-              >
-                <UserPlus className="w-4 h-4" />
-                <span>Create New User</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                {/* Retrieve / Sync from Cloud Button */}
+                <button
+                  id="admin-retrieve-users-btn"
+                  onClick={handleRetrieveUsers}
+                  disabled={isRetrievingUsers}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold shadow transition disabled:opacity-50"
+                  title="Retrieve latest list of all members from database"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${isRetrievingUsers ? 'animate-spin' : ''}`} />
+                  <span>{isRetrievingUsers ? 'Retrieving...' : 'Retrieve / Sync List'}</span>
+                </button>
+
+                {/* Export CSV Button */}
+                <button
+                  id="admin-export-users-csv-btn"
+                  onClick={handleExportUsersCSV}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold shadow transition"
+                  title="Export all member records to CSV file"
+                >
+                  <Download className="w-3.5 h-3.5 text-emerald-400" />
+                  <span>Export CSV</span>
+                </button>
+
+                {/* Create New User Modal Button */}
+                <button
+                  id="admin-create-user-btn"
+                  onClick={() => setIsCreateUserModalOpen(true)}
+                  className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition"
+                >
+                  <UserPlus className="w-3.5 h-3.5" />
+                  <span>+ Create Member</span>
+                </button>
+              </div>
             </div>
 
-            {/* Filter Toolbar */}
+            {/* Quick Metrics Bar for Members */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">All Accounts</span>
+                <div className="mt-1 text-xl font-bold text-white">{registeredUsers.length}</div>
+                <div className="text-[10px] text-indigo-400 mt-0.5">Active Directory</div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Customer Passes</span>
+                <div className="mt-1 text-xl font-bold text-white">
+                  {registeredUsers.filter(u => u.role === 'user' || !u.role).length}
+                </div>
+                <div className="text-[10px] text-emerald-400 mt-0.5">Mobile Pass Wallets</div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Merchant Terminals</span>
+                <div className="mt-1 text-xl font-bold text-white">
+                  {registeredUsers.filter(u => u.role === 'merchant').length}
+                </div>
+                <div className="text-[10px] text-amber-400 mt-0.5">POS Scan Terminals</div>
+              </div>
+              <div className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800">
+                <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Total Member Points</span>
+                <div className="mt-1 text-xl font-bold text-white">
+                  {registeredUsers.reduce((sum, u) => sum + (u.pointsBalance || 0), 0).toLocaleString()}
+                </div>
+                <div className="text-[10px] text-slate-400 mt-0.5">Points in circulation</div>
+              </div>
+            </div>
+
+            {/* Filter Toolbar & View Mode Toggle */}
             <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -1333,26 +1453,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   value={userSearchQuery}
                   onChange={(e) => setUserSearchQuery(e.target.value)}
                   placeholder="Search by name, @username, email, pass ID..."
-                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white text-xs focus:border-indigo-500 focus:outline-none"
                 />
               </div>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto">
+              <div className="flex items-center gap-2 w-full sm:w-auto overflow-x-auto justify-between sm:justify-end">
                 <select
                   value={userRoleFilter}
                   onChange={(e) => setUserRoleFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 text-xs focus:border-indigo-500 focus:outline-none"
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 text-xs focus:border-indigo-500 focus:outline-none"
                 >
-                  <option value="all">All Roles</option>
-                  <option value="user">Customers / Members</option>
-                  <option value="merchant">Merchant POS</option>
-                  <option value="admin">Administrators</option>
+                  <option value="all">All Roles ({registeredUsers.length})</option>
+                  <option value="user">Customers ({registeredUsers.filter(u => u.role === 'user' || !u.role).length})</option>
+                  <option value="merchant">Merchant POS ({registeredUsers.filter(u => u.role === 'merchant').length})</option>
+                  <option value="admin">Administrators ({registeredUsers.filter(u => u.role === 'admin').length})</option>
                 </select>
 
                 <select
                   value={userTierFilter}
                   onChange={(e) => setUserTierFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 text-xs focus:border-indigo-500 focus:outline-none"
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 text-xs focus:border-indigo-500 focus:outline-none"
                 >
                   <option value="all">All Tiers</option>
                   <option value="Bronze">Bronze Tier</option>
@@ -1360,128 +1480,242 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="Gold">Gold Tier</option>
                   <option value="Platinum">Platinum Tier</option>
                 </select>
+
+                {/* Table vs Cards Mode Toggle */}
+                <div className="flex items-center rounded-lg bg-slate-900 border border-slate-800 p-0.5 shrink-0">
+                  <button
+                    onClick={() => setUsersViewMode('table')}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition ${
+                      usersViewMode === 'table' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Table
+                  </button>
+                  <button
+                    onClick={() => setUsersViewMode('cards')}
+                    className={`px-2.5 py-1 rounded text-xs font-medium transition ${
+                      usersViewMode === 'cards' ? 'bg-indigo-600 text-white' : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    Cards
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Users Table */}
-            <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-300">
-                  <thead className="bg-slate-950/80 text-xs uppercase tracking-wider text-slate-400 border-b border-slate-800">
-                    <tr>
-                      <th className="px-4 py-3.5">User</th>
-                      <th className="px-4 py-3.5">Pass ID / Email</th>
-                      <th className="px-4 py-3.5">Role</th>
-                      <th className="px-4 py-3.5">Tier</th>
-                      <th className="px-4 py-3.5">Point Balance</th>
-                      <th className="px-4 py-3.5 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-800/80">
-                    {filteredUsers.map((user) => (
-                      <tr key={user.username} className="hover:bg-slate-800/40 transition">
-                        {/* Avatar & Name */}
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0">
-                              {user.fullName.charAt(0)}
+            {/* VIEW MODE 1: USERS TABLE */}
+            {usersViewMode === 'table' && (
+              <div className="bg-slate-900 rounded-xl border border-slate-800 overflow-hidden shadow-xl">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-slate-300">
+                    <thead className="bg-slate-950/80 text-xs uppercase tracking-wider text-slate-400 border-b border-slate-800">
+                      <tr>
+                        <th className="px-4 py-3.5">Member / Account</th>
+                        <th className="px-4 py-3.5">Pass ID & Email</th>
+                        <th className="px-4 py-3.5">Role</th>
+                        <th className="px-4 py-3.5">Tier</th>
+                        <th className="px-4 py-3.5">Points Balance</th>
+                        <th className="px-4 py-3.5 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-800/80">
+                      {filteredUsers.map((user) => (
+                        <tr key={user.username} className="hover:bg-slate-800/40 transition">
+                          {/* Avatar & Name */}
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-3">
+                              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow">
+                                {user.fullName ? user.fullName.charAt(0) : user.username.charAt(0).toUpperCase()}
+                              </div>
+                              <div className="overflow-hidden">
+                                <p className="font-semibold text-white truncate">{user.fullName || user.username}</p>
+                                <p className="text-xs text-slate-400 font-mono">@{user.username}</p>
+                              </div>
                             </div>
-                            <div className="overflow-hidden">
-                              <p className="font-semibold text-white truncate">{user.fullName}</p>
-                              <p className="text-xs text-slate-400 font-mono">@{user.username}</p>
+                          </td>
+
+                          {/* Pass ID & Email */}
+                          <td className="px-4 py-3.5">
+                            <p className="text-xs font-mono text-indigo-300 font-semibold">{user.passId}</p>
+                            <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                          </td>
+
+                          {/* Role Badge */}
+                          <td className="px-4 py-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getRoleBadge(user.role)}`}>
+                              {user.role || 'user'}
+                            </span>
+                          </td>
+
+                          {/* Tier */}
+                          <td className="px-4 py-3.5">
+                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getTierBadge(user.currentTier)}`}>
+                              {user.currentTier || 'Bronze'}
+                            </span>
+                          </td>
+
+                          {/* Point Balance */}
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-1.5">
+                              <span className="font-bold text-white text-base">
+                                {(user.pointsBalance ?? 0).toLocaleString()}
+                              </span>
+                              <span className="text-xs text-slate-400 font-mono">pts</span>
                             </div>
+                            {user.lifetimePoints !== undefined && (
+                              <div className="text-[10px] text-slate-500 font-mono">
+                                Lifetime: {user.lifetimePoints.toLocaleString()}
+                              </div>
+                            )}
+                          </td>
+
+                          {/* Actions */}
+                          <td className="px-4 py-3.5 text-right">
+                            <div className="flex items-center justify-end gap-1.5">
+                              {/* View Details Button */}
+                              <button
+                                onClick={() => setSelectedUserForDetails(user)}
+                                className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition"
+                                title="View Account Details & Balances"
+                              >
+                                View
+                              </button>
+
+                              {/* Edit Button */}
+                              <button
+                                onClick={() => setSelectedUserForEdit(user)}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                                title="Edit Member Account"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+
+                              {/* Quick Adjust Points Button */}
+                              <button
+                                onClick={() => {
+                                  setSelectedUserForAdjust(user);
+                                  setIsAdjustModalOpen(true);
+                                }}
+                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition"
+                                title="Adjust Points Balance"
+                              >
+                                <Sparkles className="w-4 h-4" />
+                              </button>
+
+                              {/* Delete User */}
+                              {user.username.toLowerCase() !== 'mambiadmin' && (
+                                <button
+                                  onClick={() => handleDeleteUser(user.username)}
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
+                                  title="Delete Member Account"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+
+                      {filteredUsers.length === 0 && (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-12 text-center text-slate-500 text-sm">
+                            No member accounts match your search or filter criteria.
+                          </td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* VIEW MODE 2: MEMBERS CARDS GRID */}
+            {usersViewMode === 'cards' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredUsers.map((user) => (
+                  <div
+                    key={user.username}
+                    className="p-5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between gap-4 shadow-lg"
+                  >
+                    <div>
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-base shadow">
+                            {user.fullName ? user.fullName.charAt(0) : user.username.charAt(0).toUpperCase()}
                           </div>
-                        </td>
+                          <div>
+                            <h3 className="font-bold text-white text-base leading-snug">{user.fullName || user.username}</h3>
+                            <p className="text-xs text-slate-400 font-mono">@{user.username}</p>
+                          </div>
+                        </div>
 
-                        {/* Pass ID & Email */}
-                        <td className="px-4 py-3.5">
-                          <p className="text-xs font-mono text-indigo-300">{user.passId}</p>
-                          <p className="text-xs text-slate-400 truncate">{user.email}</p>
-                        </td>
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase border ${getRoleBadge(user.role)}`}>
+                          {user.role || 'user'}
+                        </span>
+                      </div>
 
-                        {/* Role Badge */}
-                        <td className="px-4 py-3.5">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getRoleBadge(user.role)}`}>
-                            {user.role}
-                          </span>
-                        </td>
-
-                        {/* Tier */}
-                        <td className="px-4 py-3.5">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getTierBadge(user.currentTier)}`}>
+                      <div className="mt-4 space-y-2 text-xs">
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                          <span className="text-slate-400">Pass ID</span>
+                          <span className="font-mono text-indigo-300 font-semibold">{user.passId}</span>
+                        </div>
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                          <span className="text-slate-400">Loyalty Tier</span>
+                          <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${getTierBadge(user.currentTier)}`}>
                             {user.currentTier || 'Bronze'}
                           </span>
-                        </td>
+                        </div>
+                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                          <span className="text-slate-400">Points Balance</span>
+                          <span className="font-bold text-white text-sm">
+                            {(user.pointsBalance ?? 0).toLocaleString()} <span className="text-[10px] text-slate-400">pts</span>
+                          </span>
+                        </div>
+                      </div>
+                    </div>
 
-                        {/* Point Balance */}
-                        <td className="px-4 py-3.5">
-                          <div className="flex items-center gap-2">
-                            <span className="font-bold text-white text-base">
-                              {(user.pointsBalance ?? 0).toLocaleString()}
-                            </span>
-                            <span className="text-xs text-slate-400 font-mono">pts</span>
-                          </div>
-                        </td>
+                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => setSelectedUserForDetails(user)}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition"
+                        >
+                          View
+                        </button>
+                        <button
+                          onClick={() => setSelectedUserForEdit(user)}
+                          className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                          title="Edit Account"
+                        >
+                          <Edit3 className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setSelectedUserForAdjust(user);
+                            setIsAdjustModalOpen(true);
+                          }}
+                          className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition"
+                          title="Adjust Points"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
 
-                        {/* Actions */}
-                        <td className="px-4 py-3.5 text-right">
-                          <div className="flex items-center justify-end gap-1.5">
-                            {/* View Details Button */}
-                            <button
-                              onClick={() => setSelectedUserForDetails(user)}
-                              className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition"
-                              title="View Details & Balance"
-                            >
-                              View
-                            </button>
-
-                            {/* Edit Button */}
-                            <button
-                              onClick={() => setSelectedUserForEdit(user)}
-                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-                              title="Edit User"
-                            >
-                              <Edit3 className="w-4 h-4" />
-                            </button>
-
-                            {/* Quick Adjust Points Button */}
-                            <button
-                              onClick={() => {
-                                setSelectedUserForAdjust(user);
-                                setIsAdjustModalOpen(true);
-                              }}
-                              className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition"
-                              title="Adjust Points"
-                            >
-                              <Sparkles className="w-4 h-4" />
-                            </button>
-
-                            {/* Delete User */}
-                            {user.username.toLowerCase() !== 'mambiadmin' && (
-                              <button
-                                onClick={() => handleDeleteUser(user.username)}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
-                                title="Delete User"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-
-                    {filteredUsers.length === 0 && (
-                      <tr>
-                        <td colSpan={6} className="px-4 py-12 text-center text-slate-500 text-sm">
-                          No users found matching your filters.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                      {user.username.toLowerCase() !== 'mambiadmin' && (
+                        <button
+                          onClick={() => handleDeleteUser(user.username)}
+                          className="p-1 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
+                          title="Delete Account"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
               </div>
-            </div>
+            )}
           </div>
         )}
       </main>

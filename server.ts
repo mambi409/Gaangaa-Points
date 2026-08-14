@@ -1219,6 +1219,83 @@ app.delete('/api/admin/posts/:id', async (req, res) => {
   }
 });
 
+// API ROUTE: Get All Registered Users / Member Accounts (Full List)
+app.get('/api/admin/users', async (req, res) => {
+  try {
+    // If connected to Firestore, query latest users from Firestore
+    if (db) {
+      try {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        if (!usersSnap.empty) {
+          const freshUsers: RegisteredUser[] = [];
+          usersSnap.forEach((d) => {
+            freshUsers.push(d.data() as RegisteredUser);
+          });
+          // Merge with memory array
+          for (const u of freshUsers) {
+            const idx = usersDB.findIndex(x => x.username.toLowerCase() === u.username.toLowerCase());
+            if (idx >= 0) {
+              usersDB[idx] = { ...usersDB[idx], ...u };
+            } else {
+              usersDB.push(u);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[Firestore] Live users fetch notice:', err);
+      }
+    }
+
+    // Map and enrich all users
+    const list: AdminUserItem[] = usersDB.map((u) => {
+      const isMambi = u.username.toLowerCase() === 'mambi409';
+      const pts = isMambi ? walletData.pointsBalance : (u.pointsBalance ?? 100);
+      const tier = isMambi ? walletData.currentTier : (u.currentTier ?? (pts >= 2500 ? 'Platinum' : pts >= 1200 ? 'Gold' : pts >= 500 ? 'Silver' : 'Bronze'));
+      const lifetime = isMambi ? walletData.lifetimePoints : (u.lifetimePoints ?? pts + 200);
+
+      return {
+        username: u.username,
+        fullName: u.fullName || u.username,
+        email: u.email || `${u.username}@omniloyalty.internal`,
+        passId: u.passId || `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
+        role: u.role || (u.username.toLowerCase() === 'mambiadmin' ? 'admin' : 'user'),
+        pinCode: u.pinCode ? '••••• (Set)' : 'Unset',
+        pointsBalance: pts,
+        lifetimePoints: lifetime,
+        currentTier: tier,
+        status: u.status || 'active',
+        createdAt: u.createdAt || new Date(Date.now() - 3600000 * 24 * 30).toISOString()
+      };
+    });
+
+    res.json({
+      success: true,
+      totalCount: list.length,
+      users: list
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to retrieve list of users' });
+  }
+});
+
+// Alias for general users retrieval
+app.get('/api/users', async (req, res) => {
+  try {
+    const list = usersDB.map((u) => ({
+      username: u.username,
+      fullName: u.fullName,
+      email: u.email,
+      passId: u.passId,
+      role: u.role || 'user',
+      currentTier: u.currentTier || 'Bronze',
+      pointsBalance: u.username.toLowerCase() === 'mambi409' ? walletData.pointsBalance : (u.pointsBalance ?? 100)
+    }));
+    res.json({ success: true, count: list.length, users: list });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get users' });
+  }
+});
+
 // API ROUTE: Create User Manually
 app.post('/api/admin/users/create', async (req, res) => {
   try {
