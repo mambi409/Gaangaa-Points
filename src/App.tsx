@@ -452,6 +452,18 @@ export default function App() {
       <Header
         currentRole={currentRole}
         onRoleToggle={(role) => {
+          if (role === 'user' && !authUser) {
+            handleOpenAuth('user', 'login');
+            return;
+          }
+          if (role === 'merchant' && (!authUser || authUser.role === 'user')) {
+            handleOpenAuth('merchant', 'login');
+            return;
+          }
+          if (role === 'admin' && (!authUser || authUser.role !== 'admin')) {
+            handleOpenAuth('admin', 'login');
+            return;
+          }
           setCurrentRole(role);
           if (role === 'user' && activeView === 'home' && authUser) {
             setActiveView('wallet');
@@ -461,7 +473,13 @@ export default function App() {
         unreadNotifsCount={notifications.filter((n) => !n.read).length}
         onOpenNotifications={() => setIsNotificationsOpen(true)}
         activeView={activeView}
-        onViewChange={(view) => setActiveView(view)}
+        onViewChange={(view) => {
+          if (view === 'wallet' && !authUser) {
+            handleOpenAuth('user', 'login');
+            return;
+          }
+          setActiveView(view);
+        }}
         authUser={authUser}
         onLogout={handleLogout}
         onOpenLogin={(mode?: 'login' | 'register') => handleOpenAuth('user', mode || 'login')}
