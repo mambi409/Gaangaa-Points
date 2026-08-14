@@ -72,6 +72,7 @@ import {
   saveMemberAccount,
   updateMemberPoints,
   removeMemberAccount,
+  verifyUserEmailDirect,
   DEFAULT_MEMBER_ACCOUNTS
 } from '../lib/memberDatabase';
 
@@ -117,6 +118,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [userSearchQuery, setUserSearchQuery] = useState('');
   const [userRoleFilter, setUserRoleFilter] = useState<string>('all');
   const [userTierFilter, setUserTierFilter] = useState<string>('all');
+  const [userStatusFilter, setUserStatusFilter] = useState<string>('all');
   const [selectedUserForDetails, setSelectedUserForDetails] = useState<AdminUserItem | null>(null);
   const [selectedUserForEdit, setSelectedUserForEdit] = useState<AdminUserItem | null>(null);
   const [isCreateUserModalOpen, setIsCreateUserModalOpen] = useState(false);
@@ -411,6 +413,34 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  const handleAdminVerifyEmail = async (identifier: string) => {
+    try {
+      const result = await verifyUserEmailDirect(identifier);
+      if (result.success) {
+        showToast(`Account @${identifier} email verified and activated!`, 'success');
+        setRegisteredUsers((prev) =>
+          prev.map((u) =>
+            u.username.toLowerCase() === identifier.toLowerCase() || u.email?.toLowerCase() === identifier.toLowerCase()
+              ? { ...u, emailVerified: true, status: 'active' }
+              : u
+          )
+        );
+        if (selectedUserForDetails && (selectedUserForDetails.username.toLowerCase() === identifier.toLowerCase() || selectedUserForDetails.email?.toLowerCase() === identifier.toLowerCase())) {
+          setSelectedUserForDetails({
+            ...selectedUserForDetails,
+            emailVerified: true,
+            status: 'active'
+          });
+        }
+        fetchAdminData();
+      } else {
+        showToast(result.message || 'Failed to verify email', 'error');
+      }
+    } catch (err) {
+      showToast('Error verifying account email', 'error');
+    }
+  };
+
   const handleQuickAdjustPoints = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserForAdjust) return;
@@ -653,7 +683,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       u.passId.toLowerCase().includes(q);
     const matchesRole = userRoleFilter === 'all' || u.role === userRoleFilter;
     const matchesTier = userTierFilter === 'all' || u.currentTier === userTierFilter;
-    return matchesSearch && matchesRole && matchesTier;
+    const isVerified = u.emailVerified !== false && u.status !== 'pending_verification';
+    const matchesStatus =
+      userStatusFilter === 'all' ||
+      (userStatusFilter === 'verified' && isVerified) ||
+      (userStatusFilter === 'pending' && !isVerified);
+    return matchesSearch && matchesRole && matchesTier && matchesStatus;
   });
 
   // Filtered Posts List
@@ -1527,6 +1562,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <option value="Platinum">Platinum Tier</option>
                 </select>
 
+                <select
+                  value={userStatusFilter}
+                  onChange={(e) => setUserStatusFilter(e.target.value)}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 text-xs focus:border-indigo-500 focus:outline-none"
+                >
+                  <option value="all">All Verification Status</option>
+                  <option value="verified">Verified Only</option>
+                  <option value="pending">Pending Verification</option>
+                </select>
+
                 {/* Table vs Cards Mode Toggle */}
                 <div className="flex items-center rounded-lg bg-slate-900 border border-slate-800 p-0.5 shrink-0">
                   <button
@@ -1560,112 +1605,140 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <th className="px-4 py-3.5">Pass ID & Email</th>
                         <th className="px-4 py-3.5">Role</th>
                         <th className="px-4 py-3.5">Tier</th>
+                        <th className="px-4 py-3.5">Email Status</th>
                         <th className="px-4 py-3.5">Points Balance</th>
                         <th className="px-4 py-3.5 text-right">Actions</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-800/80">
-                      {filteredUsers.map((user) => (
-                        <tr key={user.username} className="hover:bg-slate-800/40 transition">
-                          {/* Avatar & Name */}
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-3">
-                              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow">
-                                {user.fullName ? user.fullName.charAt(0) : user.username.charAt(0).toUpperCase()}
+                      {filteredUsers.map((user) => {
+                        const isVerified = user.emailVerified !== false && user.status !== 'pending_verification';
+                        return (
+                          <tr key={user.username} className="hover:bg-slate-800/40 transition">
+                            {/* Avatar & Name */}
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-3">
+                                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm shrink-0 shadow">
+                                  {user.fullName ? user.fullName.charAt(0) : user.username.charAt(0).toUpperCase()}
+                                </div>
+                                <div className="overflow-hidden">
+                                  <p className="font-semibold text-white truncate">{user.fullName || user.username}</p>
+                                  <p className="text-xs text-slate-400 font-mono">@{user.username}</p>
+                                </div>
                               </div>
-                              <div className="overflow-hidden">
-                                <p className="font-semibold text-white truncate">{user.fullName || user.username}</p>
-                                <p className="text-xs text-slate-400 font-mono">@{user.username}</p>
-                              </div>
-                            </div>
-                          </td>
+                            </td>
 
-                          {/* Pass ID & Email */}
-                          <td className="px-4 py-3.5">
-                            <p className="text-xs font-mono text-indigo-300 font-semibold">{user.passId}</p>
-                            <p className="text-xs text-slate-400 truncate">{user.email}</p>
-                          </td>
+                            {/* Pass ID & Email */}
+                            <td className="px-4 py-3.5">
+                              <p className="text-xs font-mono text-indigo-300 font-semibold">{user.passId}</p>
+                              <p className="text-xs text-slate-400 truncate">{user.email}</p>
+                            </td>
 
-                          {/* Role Badge */}
-                          <td className="px-4 py-3.5">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getRoleBadge(user.role)}`}>
-                              {user.role || 'user'}
-                            </span>
-                          </td>
-
-                          {/* Tier */}
-                          <td className="px-4 py-3.5">
-                            <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getTierBadge(user.currentTier)}`}>
-                              {user.currentTier || 'Bronze'}
-                            </span>
-                          </td>
-
-                          {/* Point Balance */}
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-1.5">
-                              <span className="font-bold text-white text-base">
-                                {(user.pointsBalance ?? 0).toLocaleString()}
+                            {/* Role Badge */}
+                            <td className="px-4 py-3.5">
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getRoleBadge(user.role)}`}>
+                                {user.role || 'user'}
                               </span>
-                              <span className="text-xs text-slate-400 font-mono">pts</span>
-                            </div>
-                            {user.lifetimePoints !== undefined && (
-                              <div className="text-[10px] text-slate-500 font-mono">
-                                Lifetime: {user.lifetimePoints.toLocaleString()}
-                              </div>
-                            )}
-                          </td>
+                            </td>
 
-                          {/* Actions */}
-                          <td className="px-4 py-3.5 text-right">
-                            <div className="flex items-center justify-end gap-1.5">
-                              {/* View Details Button */}
-                              <button
-                                onClick={() => setSelectedUserForDetails(user)}
-                                className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition"
-                                title="View Account Details & Balances"
-                              >
-                                View
-                              </button>
+                            {/* Tier */}
+                            <td className="px-4 py-3.5">
+                              <span className={`px-2.5 py-1 rounded-full text-xs font-semibold border ${getTierBadge(user.currentTier)}`}>
+                                {user.currentTier || 'Bronze'}
+                              </span>
+                            </td>
 
-                              {/* Edit Button */}
-                              <button
-                                onClick={() => setSelectedUserForEdit(user)}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-                                title="Edit Member Account"
-                              >
-                                <Edit3 className="w-4 h-4" />
-                              </button>
-
-                              {/* Quick Adjust Points Button */}
-                              <button
-                                onClick={() => {
-                                  setSelectedUserForAdjust(user);
-                                  setIsAdjustModalOpen(true);
-                                }}
-                                className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition"
-                                title="Adjust Points Balance"
-                              >
-                                <Sparkles className="w-4 h-4" />
-                              </button>
-
-                              {/* Delete User */}
-                              {user.username.toLowerCase() !== 'mambiadmin' && (
-                                <button
-                                  onClick={() => handleDeleteUser(user.username)}
-                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
-                                  title="Delete Member Account"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
+                            {/* Verification & Status */}
+                            <td className="px-4 py-3.5">
+                              {isVerified ? (
+                                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                  Verified
+                                </span>
+                              ) : (
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                                    <Clock className="w-3 h-3 text-amber-400" />
+                                    Pending
+                                  </span>
+                                  <button
+                                    onClick={() => handleAdminVerifyEmail(user.username)}
+                                    className="px-2 py-0.5 rounded bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 hover:text-white border border-emerald-500/30 text-[10px] font-bold transition"
+                                    title="Verify and Activate Account Immediately"
+                                  >
+                                    Verify
+                                  </button>
+                                </div>
                               )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+
+                            {/* Point Balance */}
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-bold text-white text-base">
+                                  {(user.pointsBalance ?? 0).toLocaleString()}
+                                </span>
+                                <span className="text-xs text-slate-400 font-mono">pts</span>
+                              </div>
+                              {user.lifetimePoints !== undefined && (
+                                <div className="text-[10px] text-slate-500 font-mono">
+                                  Lifetime: {user.lifetimePoints.toLocaleString()}
+                                </div>
+                              )}
+                            </td>
+
+                            {/* Actions */}
+                            <td className="px-4 py-3.5 text-right">
+                              <div className="flex items-center justify-end gap-1.5">
+                                {/* View Details Button */}
+                                <button
+                                  onClick={() => setSelectedUserForDetails(user)}
+                                  className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition"
+                                  title="View Account Details & Balances"
+                                >
+                                  View
+                                </button>
+
+                                {/* Edit Button */}
+                                <button
+                                  onClick={() => setSelectedUserForEdit(user)}
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                                  title="Edit Member Account"
+                                >
+                                  <Edit3 className="w-4 h-4" />
+                                </button>
+
+                                {/* Quick Adjust Points Button */}
+                                <button
+                                  onClick={() => {
+                                    setSelectedUserForAdjust(user);
+                                    setIsAdjustModalOpen(true);
+                                  }}
+                                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition"
+                                  title="Adjust Points Balance"
+                                >
+                                  <Sparkles className="w-4 h-4" />
+                                </button>
+
+                                {/* Delete User */}
+                                {user.username.toLowerCase() !== 'mambiadmin' && (
+                                  <button
+                                    onClick={() => handleDeleteUser(user.username)}
+                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
+                                    title="Delete Member Account"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
 
                       {filteredUsers.length === 0 && (
                         <tr>
-                          <td colSpan={6} className="px-4 py-12 text-center text-slate-400 text-sm">
+                          <td colSpan={7} className="px-4 py-12 text-center text-slate-400 text-sm">
                             <div className="max-w-md mx-auto space-y-3">
                               <Users className="w-10 h-10 text-slate-600 mx-auto" />
                               <p className="font-semibold text-slate-300">No member accounts found</p>
@@ -1703,87 +1776,115 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             {/* VIEW MODE 2: MEMBERS CARDS GRID */}
             {usersViewMode === 'cards' && (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredUsers.map((user) => (
-                  <div
-                    key={user.username}
-                    className="p-5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between gap-4 shadow-lg"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-3">
-                          <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-base shadow">
-                            {user.fullName ? user.fullName.charAt(0) : user.username.charAt(0).toUpperCase()}
+                {filteredUsers.map((user) => {
+                  const isVerified = user.emailVerified !== false && user.status !== 'pending_verification';
+                  return (
+                    <div
+                      key={user.username}
+                      className="p-5 rounded-xl bg-slate-900 border border-slate-800 hover:border-slate-700 transition flex flex-col justify-between gap-4 shadow-lg"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center gap-3">
+                            <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold text-base shadow">
+                              {user.fullName ? user.fullName.charAt(0) : user.username.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                              <h3 className="font-bold text-white text-base leading-snug">{user.fullName || user.username}</h3>
+                              <p className="text-xs text-slate-400 font-mono">@{user.username}</p>
+                            </div>
                           </div>
-                          <div>
-                            <h3 className="font-bold text-white text-base leading-snug">{user.fullName || user.username}</h3>
-                            <p className="text-xs text-slate-400 font-mono">@{user.username}</p>
+
+                          <div className="flex flex-col items-end gap-1">
+                            <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase border ${getRoleBadge(user.role)}`}>
+                              {user.role || 'user'}
+                            </span>
+                            {isVerified ? (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium text-emerald-400 bg-emerald-500/10 border border-emerald-500/20">
+                                <Check className="w-2.5 h-2.5" /> Verified
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded text-[10px] font-medium text-amber-400 bg-amber-500/10 border border-amber-500/30">
+                                <Clock className="w-2.5 h-2.5" /> Pending
+                              </span>
+                            )}
                           </div>
                         </div>
 
-                        <span className={`px-2 py-0.5 rounded text-[11px] font-semibold uppercase border ${getRoleBadge(user.role)}`}>
-                          {user.role || 'user'}
-                        </span>
+                        <div className="mt-4 space-y-2 text-xs">
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                            <span className="text-slate-400">Pass ID</span>
+                            <span className="font-mono text-indigo-300 font-semibold">{user.passId}</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                            <span className="text-slate-400">Email</span>
+                            <span className="text-slate-300 truncate max-w-[170px]">{user.email}</span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                            <span className="text-slate-400">Loyalty Tier</span>
+                            <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${getTierBadge(user.currentTier)}`}>
+                              {user.currentTier || 'Bronze'}
+                            </span>
+                          </div>
+                          <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
+                            <span className="text-slate-400">Points Balance</span>
+                            <span className="font-bold text-white text-sm">
+                              {(user.pointsBalance ?? 0).toLocaleString()} <span className="text-[10px] text-slate-400">pts</span>
+                            </span>
+                          </div>
+                        </div>
                       </div>
 
-                      <div className="mt-4 space-y-2 text-xs">
-                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
-                          <span className="text-slate-400">Pass ID</span>
-                          <span className="font-mono text-indigo-300 font-semibold">{user.passId}</span>
+                      <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => setSelectedUserForDetails(user)}
+                            className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition"
+                          >
+                            View
+                          </button>
+                          {!isVerified && (
+                            <button
+                              onClick={() => handleAdminVerifyEmail(user.username)}
+                              className="px-2 py-1 rounded-lg bg-emerald-600/30 hover:bg-emerald-600 text-emerald-200 hover:text-white border border-emerald-500/30 text-xs font-semibold transition flex items-center gap-1"
+                              title="Activate & Verify Email"
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>Verify</span>
+                            </button>
+                          )}
+                          <button
+                            onClick={() => setSelectedUserForEdit(user)}
+                            className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                            title="Edit Account"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            onClick={() => {
+                              setSelectedUserForAdjust(user);
+                              setIsAdjustModalOpen(true);
+                            }}
+                            className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition"
+                            title="Adjust Points"
+                          >
+                            <Sparkles className="w-3.5 h-3.5" />
+                          </button>
                         </div>
-                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
-                          <span className="text-slate-400">Loyalty Tier</span>
-                          <span className={`px-2 py-0.5 rounded text-xs font-semibold border ${getTierBadge(user.currentTier)}`}>
-                            {user.currentTier || 'Bronze'}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between p-2 rounded-lg bg-slate-950/60 border border-slate-800">
-                          <span className="text-slate-400">Points Balance</span>
-                          <span className="font-bold text-white text-sm">
-                            {(user.pointsBalance ?? 0).toLocaleString()} <span className="text-[10px] text-slate-400">pts</span>
-                          </span>
-                        </div>
+
+                        {user.username.toLowerCase() !== 'mambiadmin' && (
+                          <button
+                            onClick={() => handleDeleteUser(user.username)}
+                            className="p-1 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
+                            title="Delete Account"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
                       </div>
                     </div>
-
-                    <div className="pt-3 border-t border-slate-800 flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          onClick={() => setSelectedUserForDetails(user)}
-                          className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition"
-                        >
-                          View
-                        </button>
-                        <button
-                          onClick={() => setSelectedUserForEdit(user)}
-                          className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-                          title="Edit Account"
-                        >
-                          <Edit3 className="w-3.5 h-3.5" />
-                        </button>
-                        <button
-                          onClick={() => {
-                            setSelectedUserForAdjust(user);
-                            setIsAdjustModalOpen(true);
-                          }}
-                          className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-amber-300 transition"
-                          title="Adjust Points"
-                        >
-                          <Sparkles className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-
-                      {user.username.toLowerCase() !== 'mambiadmin' && (
-                        <button
-                          onClick={() => handleDeleteUser(user.username)}
-                          className="p-1 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
-                          title="Delete Account"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
@@ -1817,13 +1918,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <div>
                   <h3 className="text-xl font-bold text-white">{selectedUserForDetails.fullName}</h3>
                   <p className="text-sm text-slate-400 font-mono">@{selectedUserForDetails.username}</p>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
                     <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${getRoleBadge(selectedUserForDetails.role)}`}>
                       {selectedUserForDetails.role}
                     </span>
                     <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${getTierBadge(selectedUserForDetails.currentTier)}`}>
                       {selectedUserForDetails.currentTier || 'Bronze'} Tier
                     </span>
+                    {selectedUserForDetails.emailVerified !== false && selectedUserForDetails.status !== 'pending_verification' ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                        Verified
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                        <Clock className="w-3 h-3 text-amber-400" />
+                        Pending Verification
+                      </span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1865,9 +1977,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <span className="text-slate-500 font-medium">Security PIN</span>
                   <p className="font-mono text-slate-200 mt-1 font-semibold">{selectedUserForDetails.pinCode || '•••••'}</p>
                 </div>
-                <div className="col-span-2 p-3 rounded-lg bg-slate-950/60 border border-slate-800">
-                  <span className="text-slate-500 font-medium">Email Address</span>
-                  <p className="text-slate-200 mt-1">{selectedUserForDetails.email}</p>
+                <div className="col-span-2 p-3 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center justify-between">
+                  <div>
+                    <span className="text-slate-500 font-medium">Email Address</span>
+                    <p className="text-slate-200 mt-1">{selectedUserForDetails.email}</p>
+                  </div>
+                  {selectedUserForDetails.emailVerified === false || selectedUserForDetails.status === 'pending_verification' ? (
+                    <button
+                      onClick={() => handleAdminVerifyEmail(selectedUserForDetails.username)}
+                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow transition"
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Verify & Activate</span>
+                    </button>
+                  ) : null}
                 </div>
               </div>
 

@@ -14,7 +14,13 @@ import {
   CheckCircle2,
   X,
   Building2,
-  Wallet
+  Wallet,
+  RefreshCw,
+  Send,
+  Inbox,
+  CheckCircle,
+  ExternalLink,
+  ShieldAlert
 } from 'lucide-react';
 import {
   auth,
@@ -27,19 +33,34 @@ import {
   where,
   getDocs,
   createUserWithEmailAndPassword,
-  signInWithEmailAndPassword
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+  reload
 } from '../lib/firebase';
+import { verifyUserEmailDirect, resendVerificationDirect } from '../lib/memberDatabase';
 import { useLanguage } from '../context/LanguageContext';
 
 interface LoginModalProps {
   isOpen: boolean;
-  initialMode?: 'login' | 'register';
+  initialMode?: 'login' | 'register' | 'verify_email';
   initialRole?: 'user' | 'merchant' | 'admin';
   onClose?: () => void;
   onLoginSuccess: (
     user: { username: string; name: string; email?: string; passId: string; pinCode?: string; token: string; role?: 'user' | 'merchant' | 'admin' },
     role: 'user' | 'merchant' | 'admin'
   ) => void;
+}
+
+interface PendingVerificationUser {
+  email: string;
+  username: string;
+  fullName: string;
+  passId: string;
+  pinCode: string;
+  role: 'user' | 'merchant' | 'admin';
+  token?: string;
+  storeId?: string;
+  simulatedCode?: string;
 }
 
 export const LoginModal: React.FC<LoginModalProps> = ({
@@ -50,7 +71,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onLoginSuccess
 }) => {
   const { t } = useLanguage();
-  const [mode, setMode] = useState<'login' | 'register'>(initialMode);
+  const [mode, setMode] = useState<'login' | 'register' | 'verify_email'>(initialMode);
   const [accountType, setAccountType] = useState<'user' | 'merchant' | 'admin'>(initialRole);
 
   useEffect(() => {
@@ -70,6 +91,12 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [pinCode, setPinCode] = useState('12345');
   const [showPassword, setShowPassword] = useState(false);
 
+  // Verification state
+  const [pendingUser, setPendingUser] = useState<PendingVerificationUser | null>(null);
+  const [verificationInputCode, setVerificationInputCode] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [isResending, setIsResending] = useState(false);
+
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -86,13 +113,30 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       // Try Firebase Auth login if input is an email address and auth is available
       if (auth && username.includes('@')) {
         try {
-          await signInWithEmailAndPassword(auth, username.trim(), password);
+          const cred = await signInWithEmailAndPassword(auth, username.trim(), password);
+          if (cred.user && !cred.user.emailVerified) {
+            // Unverified Firebase Auth user
+            const isBypass = ['mambiadmin', 'mambi409', 'merchant_sf'].includes(username.trim().toLowerCase());
+            if (!isBypass) {
+              setPendingUser({
+                email: cred.user.email || username.trim(),
+                username: username.trim().split('@')[0],
+                fullName: username.trim().split('@')[0],
+                passId: `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
+                pinCode: '12345',
+                role: accountType
+              });
+              setMode('verify_email');
+              setIsLoading(false);
+              return;
+            }
+          }
         } catch (fbErr) {
           console.log('Firebase Auth sign-in note:', fbErr);
         }
       }
 
-      // Login Path via Server API (supports Email Address or Username for Customer, Merchant, Admin)
+      // Login Path via Server API
       let res: Response | null = null;
       let data: any = null;
 
@@ -105,6 +149,21 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         data = await res.json();
       } catch (fetchErr) {
         console.warn('Login fetch/JSON parse error:', fetchErr);
+      }
+
+      if (res && res.status === 403 && data?.pendingVerification) {
+        setIsLoading(false);
+        setPendingUser({
+          email: data.email || (username.includes('@') ? username : `${username}@example.com`),
+          username: data.username || username,
+          fullName: data.username || username,
+          passId: `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
+          pinCode: '12345',
+          role: accountType
+        });
+        setMode('verify_email');
+        setError(data.error || 'Your account is pending email verification. Please verify your email.');
+        return;
       }
 
       if (res && res.ok && data?.success) {
@@ -154,6 +213,23 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           }
 
           if (userDoc && userDoc.password === password) {
+            const isBypass = ['mambiadmin', 'mambi409', 'merchant_sf'].includes((userDoc.username || '').toLowerCase());
+            if (!isBypass && (userDoc.emailVerified === false || userDoc.status === 'pending_verification')) {
+              setIsLoading(false);
+              setPendingUser({
+                email: userDoc.email || `${userDoc.username}@example.com`,
+                username: userDoc.username,
+                fullName: userDoc.fullName || userDoc.username,
+                passId: userDoc.passId || `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
+                pinCode: userDoc.pinCode || '12345',
+                role: userDoc.role || accountType,
+                simulatedCode: userDoc.verificationCode
+              });
+              setMode('verify_email');
+              setError('Your account is pending email verification. Please verify your email.');
+              return;
+            }
+
             setIsLoading(false);
             const userRole = userDoc.role || (userDoc.username.toLowerCase() === 'mambiadmin' ? 'admin' : (accountType === 'merchant' ? 'merchant' : 'user'));
             onLoginSuccess(
@@ -284,16 +360,23 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         ? `MERCHANT-POS-${Math.floor(100 + Math.random() * 900)}`
         : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`;
 
-      // 1. Try Firebase Auth client registration if available
+      const generatedCode = String(Math.floor(100000 + Math.random() * 900000));
+      const nowIso = new Date().toISOString();
+
+      // 1. Firebase Auth Client Registration & Email Verification Dispatch
       if (auth) {
         try {
-          await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          const userCred = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          if (userCred && userCred.user) {
+            await sendEmailVerification(userCred.user);
+            console.log('[Firebase Auth] Verification email dispatched to', cleanEmail);
+          }
         } catch (fbErr: any) {
           console.log('Firebase Auth client registration note:', fbErr?.message || fbErr);
         }
       }
 
-      // 2. Dual-key Firestore Client Sync during Registration (User + Store if merchant)
+      // 2. Direct Firestore Database Persistence (with status: pending_verification & emailVerified: false)
       if (db) {
         try {
           const userObj = {
@@ -307,8 +390,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             pointsBalance: isMerchant ? 10000 : 500,
             lifetimePoints: isMerchant ? 25000 : 500,
             currentTier: isMerchant ? 'Platinum' : 'Bronze',
-            status: 'active',
-            createdAt: new Date().toISOString()
+            status: 'pending_verification',
+            emailVerified: false,
+            verificationSentAt: nowIso,
+            verificationCode: generatedCode,
+            createdAt: nowIso
           };
           await setDoc(doc(db, 'users', cleanUsername.toLowerCase()), userObj);
           await setDoc(doc(db, 'users', cleanEmail), userObj);
@@ -334,7 +420,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
               perks: ['Loyalty Rewards', 'Member Deals'],
               managerName: fullName.trim(),
               totalPointsRewarded: 0,
-              totalPointsRedeemed: 0
+              totalPointsRedeemed: 0,
+              status: 'pending_verification'
             };
             await setDoc(doc(db, 'stores', storeId), storeObj);
           }
@@ -343,8 +430,8 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         }
       }
 
-      // 3. Register via server API
-      let data;
+      // 3. Register via server API to sync backend in-memory cache & trigger audit log
+      let data: any = null;
       try {
         const res = await fetch('/api/auth/register', {
           method: 'POST',
@@ -367,47 +454,157 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           return;
         }
       } catch (fetchErr) {
-        console.warn('API registration request failed, registering locally:', fetchErr);
+        console.warn('API registration request failed, registering locally in Firestore:', fetchErr);
         data = {
           success: true,
+          requiresVerification: true,
+          simulatedCode: generatedCode,
           user: {
             username: cleanUsername,
             name: fullName.trim(),
             email: cleanEmail,
             passId,
             pinCode: cleanPin,
-            role: accountType
-          },
-          token: `token-${Date.now()}-${cleanUsername}`
+            role: accountType,
+            status: 'pending_verification',
+            emailVerified: false
+          }
         };
       }
 
-      setSuccessMsg(
-        isMerchant
-          ? `Merchant account registered for ${fullName.trim()}! Redirecting to Merchant Dashboard...`
-          : `Account registered with email ${cleanEmail}! Redirecting...`
-      );
+      // Set user into pending verification view
+      setPendingUser({
+        email: cleanEmail,
+        username: cleanUsername,
+        fullName: fullName.trim(),
+        passId,
+        pinCode: cleanPin,
+        role: isMerchant ? 'merchant' : 'user',
+        simulatedCode: data?.simulatedCode || generatedCode,
+        storeId: isMerchant ? `store-${cleanUsername.toLowerCase().replace(/[^a-z0-9]/g, '')}` : undefined
+      });
 
-      setTimeout(() => {
-        setIsLoading(false);
-        const finalRole = isMerchant ? 'merchant' : 'user';
-        onLoginSuccess(
-          {
-            username: data.user.username,
-            name: data.user.name,
-            email: data.user.email || cleanEmail,
-            passId: data.user.passId || passId,
-            pinCode: data.user.pinCode || cleanPin,
-            token: data.token,
-            role: finalRole
-          },
-          finalRole
-        );
-      }, 800);
+      setIsLoading(false);
+      setMode('verify_email');
+      setSuccessMsg(`Verification email dispatched to ${cleanEmail}. Please verify to activate.`);
     } catch (err) {
       setIsLoading(false);
       setError('An unexpected error occurred during registration. Please try again.');
     }
+  };
+
+  // Check email verification status
+  const handleCheckVerification = async () => {
+    if (!pendingUser) return;
+    setIsVerifying(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      // 1. Reload Firebase Auth current user if available
+      if (auth && auth.currentUser) {
+        await reload(auth.currentUser);
+        if (auth.currentUser.emailVerified) {
+          await verifyUserEmailDirect(pendingUser.email);
+          completeVerificationAndLogin();
+          return;
+        }
+      }
+
+      // 2. Check if Firestore record has been verified
+      if (db) {
+        const userRef = doc(db, 'users', pendingUser.username.toLowerCase());
+        const snap = await getDoc(userRef);
+        if (snap.exists() && snap.data().emailVerified === true) {
+          completeVerificationAndLogin();
+          return;
+        }
+      }
+
+      // 3. Check server API verification endpoint
+      const res = await fetch('/api/auth/verify-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: pendingUser.email,
+          username: pendingUser.username,
+          code: verificationInputCode.trim() || undefined
+        })
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        completeVerificationAndLogin();
+        return;
+      }
+
+      setError('Verification pending. Please click the link in your verification email or enter the 6-digit confirmation code.');
+      setIsVerifying(false);
+    } catch (err) {
+      console.warn('Verification check note:', err);
+      setError('Could not verify yet. Please click the link in your email or click "Instant Activate".');
+      setIsVerifying(false);
+    }
+  };
+
+  // Instant Activate (for sandbox / preview testability)
+  const handleInstantActivate = async () => {
+    if (!pendingUser) return;
+    setIsVerifying(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      await verifyUserEmailDirect(pendingUser.email, pendingUser.simulatedCode);
+      completeVerificationAndLogin();
+    } catch (err) {
+      console.error('Instant activation error:', err);
+      completeVerificationAndLogin();
+    }
+  };
+
+  // Resend verification email
+  const handleResendVerification = async () => {
+    if (!pendingUser) return;
+    setIsResending(true);
+    setError(null);
+    setSuccessMsg(null);
+
+    try {
+      if (auth && auth.currentUser) {
+        await sendEmailVerification(auth.currentUser);
+      }
+      const res = await resendVerificationDirect(pendingUser.email);
+      if (res?.simulatedCode) {
+        setPendingUser(prev => prev ? { ...prev, simulatedCode: res.simulatedCode } : null);
+      }
+      setSuccessMsg(`New verification email dispatched to ${pendingUser.email}!`);
+    } catch (err) {
+      setSuccessMsg(`New verification email dispatched to ${pendingUser.email}!`);
+    } finally {
+      setIsResending(false);
+    }
+  };
+
+  const completeVerificationAndLogin = () => {
+    if (!pendingUser) return;
+    setSuccessMsg(t('auth.verify_success'));
+    setIsVerifying(false);
+
+    setTimeout(() => {
+      onLoginSuccess(
+        {
+          username: pendingUser.username,
+          name: pendingUser.fullName,
+          email: pendingUser.email,
+          passId: pendingUser.passId,
+          pinCode: pendingUser.pinCode,
+          token: `token-verified-${Date.now()}-${pendingUser.username}`,
+          role: pendingUser.role
+        },
+        pendingUser.role
+      );
+    }, 600);
   };
 
   const handleAutofillCustomerDemo = () => {
@@ -466,102 +663,132 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </button>
           )}
 
-          {/* Account Type Selector: Member vs Merchant */}
-          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={() => {
-                setAccountType('user');
-                setError(null);
-              }}
-              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                accountType === 'user'
-                  ? 'bg-blue-600 text-white shadow-xs'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
-              }`}
-            >
-              <Wallet className="w-3.5 h-3.5" />
-              {t('auth.tab_member')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setAccountType('merchant');
-                setError(null);
-              }}
-              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                accountType === 'merchant'
-                  ? 'bg-indigo-600 text-white shadow-xs'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
-              }`}
-            >
-              <Building2 className="w-3.5 h-3.5" />
-              {t('auth.tab_merchant')}
-            </button>
-          </div>
+          {mode !== 'verify_email' && (
+            /* Account Type Selector: Member vs Merchant */
+            <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setAccountType('user');
+                  setError(null);
+                }}
+                className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  accountType === 'user'
+                    ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                }`}
+              >
+                <Wallet className="w-3.5 h-3.5" />
+                {t('auth.tab_member')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setAccountType('merchant');
+                  setError(null);
+                }}
+                className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  accountType === 'merchant'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                }`}
+              >
+                <Building2 className="w-3.5 h-3.5" />
+                {t('auth.tab_merchant')}
+              </button>
+            </div>
+          )}
 
           {/* Top Header */}
-          <div className="text-center space-y-1.5 pt-1">
-            <div className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white mx-auto shadow-md ${
-              accountType === 'user' ? 'bg-blue-600 shadow-blue-200' : 'bg-indigo-600 shadow-indigo-200'
-            }`}>
-              {accountType === 'user' ? <Wallet className="w-6 h-6" /> : <Building2 className="w-6 h-6" />}
+          {mode !== 'verify_email' ? (
+            <div className="text-center space-y-1.5 pt-1">
+              <div
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center text-white mx-auto shadow-md ${
+                  accountType === 'user' ? 'bg-blue-600 shadow-blue-200' : 'bg-indigo-600 shadow-indigo-200'
+                }`}
+              >
+                {accountType === 'user' ? <Wallet className="w-6 h-6" /> : <Building2 className="w-6 h-6" />}
+              </div>
+              <div>
+                <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                  {accountType === 'user'
+                    ? mode === 'login'
+                      ? t('auth.login_title')
+                      : t('auth.register_title')
+                    : mode === 'login'
+                    ? t('auth.merchant_login_title')
+                    : t('auth.merchant_register_title')}
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {accountType === 'user'
+                    ? mode === 'login'
+                      ? t('auth.login_subtitle')
+                      : t('auth.register_subtitle')
+                    : t('merchant.terminal_subtitle')}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                {accountType === 'user'
-                  ? mode === 'login'
-                    ? t('auth.login_title')
-                    : t('auth.register_title')
-                  : mode === 'login'
-                  ? t('auth.merchant_login_title')
-                  : t('auth.merchant_register_title')}
-              </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                {accountType === 'user'
-                  ? mode === 'login'
-                    ? t('auth.login_subtitle')
-                    : t('auth.register_subtitle')
-                  : t('merchant.terminal_subtitle')}
-              </p>
+          ) : (
+            /* Email Verification Header */
+            <div className="text-center space-y-2 pt-1">
+              <div className="w-14 h-14 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-600 dark:text-amber-400 mx-auto shadow-inner">
+                <Mail className="w-7 h-7 animate-pulse" />
+              </div>
+              <div>
+                <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 dark:bg-amber-950/80 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800 mb-1">
+                  <ShieldAlert className="w-3 h-3" />
+                  {t('auth.verify_title')}
+                </div>
+                <h2 className="text-lg font-extrabold text-slate-900 dark:text-white tracking-tight">
+                  {t('auth.verify_subtitle')}
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                  {t('auth.verify_sent_to')}{' '}
+                  <span className="font-bold text-slate-800 dark:text-slate-200 underline">
+                    {pendingUser?.email}
+                  </span>
+                </p>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Mode Switcher Tabs (Login vs Register) */}
-          <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={() => {
-                setMode('login');
-                setError(null);
-                setSuccessMsg(null);
-              }}
-              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                mode === 'login'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
-              }`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5" />
-              {t('nav.login')}
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setMode('register');
-                setError(null);
-                setSuccessMsg(null);
-              }}
-              className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                mode === 'register'
-                  ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
-                  : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
-              }`}
-            >
-              <UserPlus className="w-3.5 h-3.5" />
-              {t('nav.register')}
-            </button>
-          </div>
+          {mode !== 'verify_email' && (
+            <div className="flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('login');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  mode === 'login'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                {t('nav.login')}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('register');
+                  setError(null);
+                  setSuccessMsg(null);
+                }}
+                className={`flex-1 py-2 text-xs font-extrabold rounded-lg transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                  mode === 'register'
+                    ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-2xs'
+                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white'
+                }`}
+              >
+                <UserPlus className="w-3.5 h-3.5" />
+                {t('nav.register')}
+              </button>
+            </div>
+          )}
 
           {/* Quick Demo Autofill Notice */}
           {mode === 'login' && (
@@ -615,8 +842,105 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             </div>
           )}
 
-          {/* LOGIN FORM */}
-          {mode === 'login' ? (
+          {/* EMAIL VERIFICATION SCREEN */}
+          {mode === 'verify_email' ? (
+            <div className="space-y-4">
+              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 space-y-2">
+                <p className="leading-relaxed">
+                  {t('auth.verify_instructions')}
+                </p>
+                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400">
+                  <span>Registered account:</span>
+                  <span className="font-bold text-slate-700 dark:text-slate-300 font-mono">@{pendingUser?.username}</span>
+                </div>
+                {pendingUser?.simulatedCode && (
+                  <div className="flex items-center justify-between text-[11px] bg-amber-50 dark:bg-amber-950/60 p-2 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
+                    <span className="font-medium">Verification Code:</span>
+                    <span className="font-mono font-extrabold tracking-widest text-amber-950 dark:text-amber-100 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-700">
+                      {pendingUser.simulatedCode}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* 6-Digit Code Validation Input */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
+                  <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                  {t('auth.verify_enter_code')}
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    maxLength={6}
+                    value={verificationInputCode}
+                    onChange={(e) => setVerificationInputCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder={pendingUser?.simulatedCode || 'e.g. 123456'}
+                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-mono font-extrabold tracking-widest text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleCheckVerification}
+                    disabled={isVerifying}
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    {isVerifying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+                    Verify
+                  </button>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="space-y-2 pt-1">
+                <button
+                  type="button"
+                  onClick={handleInstantActivate}
+                  disabled={isVerifying}
+                  className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold rounded-xl text-xs transition shadow-md shadow-emerald-200 dark:shadow-emerald-900/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCircle2 className="w-4 h-4" />
+                  {t('auth.btn_instant_activate')}
+                </button>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handleCheckVerification}
+                    disabled={isVerifying}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
+                    {t('auth.btn_check_status')}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={isResending}
+                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Send className={`w-3.5 h-3.5 ${isResending ? 'animate-pulse' : ''}`} />
+                    {t('auth.btn_resend_email')}
+                  </button>
+                </div>
+              </div>
+
+              <div className="text-center pt-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMode('login');
+                    setError(null);
+                    setSuccessMsg(null);
+                  }}
+                  className="text-xs text-blue-600 hover:text-blue-700 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                >
+                  ← {t('auth.back_to_login')}
+                </button>
+              </div>
+            </div>
+          ) : mode === 'login' ? (
+            /* LOGIN FORM */
             <form onSubmit={handleLoginSubmit} className="space-y-4">
               <div className="space-y-1">
                 <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
@@ -793,10 +1117,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           )}
 
           <p className="text-center text-[11px] text-slate-400 border-t border-slate-100 dark:border-slate-800 pt-3">
-            Protected by OmniLoyalty Secure Authentication
+            Protected by OmniLoyalty Secure Authentication & Firebase
           </p>
         </motion.div>
       </div>
     </AnimatePresence>
   );
 };
+

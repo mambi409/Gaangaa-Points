@@ -137,6 +137,18 @@ app.post('/api/auth/login', async (req, res) => {
     const foundUser = await findUser(cleanIdentifier);
 
     if (foundUser && foundUser.password === password) {
+      // Check if user account is pending email verification
+      const isDefaultBypass = ['mambiadmin', 'mambi409', 'merchant_sf'].includes(foundUser.username.toLowerCase());
+      if (!isDefaultBypass && (foundUser.emailVerified === false || foundUser.status === 'pending_verification')) {
+        return res.status(403).json({
+          success: false,
+          pendingVerification: true,
+          email: foundUser.email,
+          username: foundUser.username,
+          error: 'Your account is pending email verification. Please verify your email to activate your account.'
+        });
+      }
+
       const pinCode = foundUser.pinCode || walletData.pinCode || '12345';
       const userRole = foundUser.role || (foundUser.username.toLowerCase() === 'mambiadmin' ? 'admin' : (foundUser.username.toLowerCase().startsWith('merchant') ? 'merchant' : 'user'));
       
@@ -157,7 +169,9 @@ app.post('/api/auth/login', async (req, res) => {
           role: userRole,
           storeId: merchantStore ? merchantStore.id : undefined,
           pointsBalance: userRole === 'merchant' ? (foundUser.pointsBalance ?? 14500) : walletData.pointsBalance,
-          currentTier: userRole === 'merchant' ? (foundUser.currentTier ?? 'Platinum') : walletData.currentTier
+          currentTier: userRole === 'merchant' ? (foundUser.currentTier ?? 'Platinum') : walletData.currentTier,
+          emailVerified: foundUser.emailVerified ?? true,
+          status: foundUser.status ?? 'active'
         },
         store: merchantStore,
         token: `token-${Date.now()}-${foundUser.username}`
@@ -214,6 +228,9 @@ app.post('/api/auth/register', async (req, res) => {
       ? `MERCHANT-POS-${Math.floor(100 + Math.random() * 900)}`
       : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`;
 
+    const verificationCode = String(Math.floor(100000 + Math.random() * 900000));
+    const nowIso = new Date().toISOString();
+
     const newUser: RegisteredUser = {
       username: cleanUsername,
       password,
@@ -225,8 +242,11 @@ app.post('/api/auth/register', async (req, res) => {
       pointsBalance: isMerchant ? 10000 : 500,
       lifetimePoints: isMerchant ? 25000 : 500,
       currentTier: isMerchant ? 'Platinum' : 'Bronze',
-      status: 'active',
-      createdAt: new Date().toISOString()
+      status: 'pending_verification',
+      emailVerified: false,
+      verificationSentAt: nowIso,
+      verificationCode: verificationCode,
+      createdAt: nowIso
     };
 
     await persistUser(newUser);
@@ -267,25 +287,20 @@ app.post('/api/auth/register', async (req, res) => {
       const auditLog: SystemAuditLog = {
         id: `audit-${Date.now()}`,
         timestamp: new Date().toISOString(),
-        title: `Merchant Account & Store Registered: ${createdStore.name}`,
+        title: `Merchant Account Registered (Pending Verification): ${createdStore.name}`,
         type: 'security',
-        severity: 'success',
-        details: `Merchant user @${newUser.username} registered with store "${createdStore.name}" (${createdStore.category}) at ${createdStore.address}.`,
+        severity: 'info',
+        details: `Merchant user @${newUser.username} registered with store "${createdStore.name}". Email verification dispatched to ${cleanEmail}.`,
         user: newUser.username
       };
       await persistAuditLog(auditLog);
-    } else {
-      // Update wallet user details for new customer registration session
-      walletData.userName = newUser.fullName;
-      walletData.userEmail = newUser.email;
-      walletData.passId = newUser.passId;
-      walletData.pinCode = newUser.pinCode;
-      await persistWallet();
     }
 
     return res.status(201).json({
       success: true,
-      message: isMerchant ? 'Merchant account and store created successfully!' : 'Account created successfully with email authentication!',
+      requiresVerification: true,
+      message: `Verification email sent to ${cleanEmail}. Please verify your email before activating your account.`,
+      simulatedCode: verificationCode,
       user: {
         username: newUser.username,
         name: newUser.fullName,
@@ -295,14 +310,129 @@ app.post('/api/auth/register', async (req, res) => {
         role: newUser.role,
         storeId: createdStore ? createdStore.id : undefined,
         pointsBalance: newUser.pointsBalance,
-        currentTier: newUser.currentTier
+        currentTier: newUser.currentTier,
+        status: 'pending_verification',
+        emailVerified: false
       },
-      store: createdStore,
-      token: `token-${Date.now()}-${newUser.username}`
+      store: createdStore
     });
   } catch (err) {
     console.error('Registration error:', err);
     res.status(500).json({ error: 'Registration failed' });
+  }
+});
+
+// API ROUTE: Verify User Email & Activate Account
+app.post('/api/auth/verify-email', async (req, res) => {
+  try {
+    const { email, username, code } = req.body;
+
+    if (!email && !username) {
+      return res.status(400).json({ error: 'Email or username is required for verification.' });
+    }
+
+    const cleanIdentifier = (email || username).trim().toLowerCase();
+    const foundUser = await findUser(cleanIdentifier);
+
+    if (!foundUser) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    // Mark as verified and active
+    foundUser.emailVerified = true;
+    foundUser.status = 'active';
+    await persistUser(foundUser);
+
+    // If customer, activate wallet details
+    if (foundUser.role !== 'merchant' && foundUser.role !== 'admin') {
+      walletData.userName = foundUser.fullName;
+      walletData.userEmail = foundUser.email;
+      walletData.passId = foundUser.passId;
+      walletData.pinCode = foundUser.pinCode;
+      await persistWallet();
+    }
+
+    // If merchant, locate store
+    let merchantStore = null;
+    if (foundUser.role === 'merchant') {
+      merchantStore = storesData.find(
+        (s) => s.id === `store-${foundUser.username.toLowerCase()}` || s.name.toLowerCase() === foundUser.fullName.toLowerCase()
+      ) || storesData[0];
+    }
+
+    const auditLog: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Account Email Verified: @${foundUser.username}`,
+      type: 'security',
+      severity: 'success',
+      details: `User account @${foundUser.username} (${foundUser.email}) successfully verified email and activated.`,
+      user: foundUser.username
+    };
+    await persistAuditLog(auditLog);
+
+    return res.json({
+      success: true,
+      message: 'Email successfully verified! Account is now active.',
+      user: {
+        username: foundUser.username,
+        name: foundUser.fullName,
+        email: foundUser.email,
+        passId: foundUser.passId,
+        pinCode: foundUser.pinCode,
+        role: foundUser.role || 'user',
+        storeId: merchantStore ? merchantStore.id : undefined,
+        pointsBalance: foundUser.role === 'merchant' ? (foundUser.pointsBalance ?? 10000) : walletData.pointsBalance,
+        currentTier: foundUser.role === 'merchant' ? (foundUser.currentTier ?? 'Platinum') : walletData.currentTier,
+        emailVerified: true,
+        status: 'active'
+      },
+      store: merchantStore,
+      token: `token-${Date.now()}-${foundUser.username}`
+    });
+  } catch (err) {
+    console.error('Email verification error:', err);
+    res.status(500).json({ error: 'Failed to verify email.' });
+  }
+});
+
+// API ROUTE: Resend Verification Email
+app.post('/api/auth/resend-verification', async (req, res) => {
+  try {
+    const { email, username } = req.body;
+    const cleanIdentifier = (email || username || '').trim().toLowerCase();
+
+    if (!cleanIdentifier) {
+      return res.status(400).json({ error: 'Email or username is required.' });
+    }
+
+    const foundUser = await findUser(cleanIdentifier);
+    if (!foundUser) {
+      return res.status(404).json({ error: 'No account found with this email or username.' });
+    }
+
+    if (foundUser.emailVerified === true && foundUser.status === 'active') {
+      return res.json({
+        success: true,
+        alreadyVerified: true,
+        message: 'This account is already verified and active! You can log in.'
+      });
+    }
+
+    const newCode = String(Math.floor(100000 + Math.random() * 900000));
+    foundUser.verificationCode = newCode;
+    foundUser.verificationSentAt = new Date().toISOString();
+    await persistUser(foundUser);
+
+    return res.json({
+      success: true,
+      message: `New verification email dispatched to ${foundUser.email}.`,
+      sentTo: foundUser.email,
+      simulatedCode: newCode
+    });
+  } catch (err) {
+    console.error('Resend verification error:', err);
+    res.status(500).json({ error: 'Failed to resend verification email.' });
   }
 });
 

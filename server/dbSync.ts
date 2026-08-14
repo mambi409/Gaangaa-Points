@@ -44,7 +44,10 @@ export interface RegisteredUser {
   lifetimePoints?: number;
   currentTier?: UserTier;
   createdAt?: string;
-  status?: 'active' | 'suspended';
+  status?: 'active' | 'pending_verification' | 'suspended';
+  emailVerified?: boolean;
+  verificationSentAt?: string;
+  verificationCode?: string;
 }
 
 export let storesData: Store[] = [...INITIAL_STORES];

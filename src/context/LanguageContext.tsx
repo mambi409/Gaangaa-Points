@@ -245,6 +245,16 @@ export const translations: Record<Language, Record<string, string>> = {
     'auth.has_account': 'Already have an account?',
     'auth.switch_signup': 'Register now',
     'auth.switch_signin': 'Sign in here',
+    'auth.verify_title': 'Verify Your Email Address',
+    'auth.verify_subtitle': 'Please confirm your email address to activate your account',
+    'auth.verify_sent_to': 'We sent a verification link & security code to:',
+    'auth.verify_instructions': 'Check your email inbox (and spam folder) to activate your account. You must verify your email before accessing your rewards wallet or merchant terminal.',
+    'auth.verify_enter_code': 'Enter 6-Digit Verification Code (Optional):',
+    'auth.btn_check_status': 'Check Verification Status',
+    'auth.btn_resend_email': 'Resend Verification Email',
+    'auth.btn_instant_activate': 'Instant Verify & Activate Account',
+    'auth.verify_success': 'Email verified successfully! Account is now active.',
+    'auth.verify_pending_error': 'Your account is pending email verification. Please verify your email before logging in.',
 
     // PIN Verification Modal
     'pin_modal.title': 'Security PIN Verification',
@@ -508,6 +518,16 @@ export const translations: Record<Language, Record<string, string>> = {
     'auth.has_account': '¿Ya tienes una cuenta?',
     'auth.switch_signup': 'Regístrate ahora',
     'auth.switch_signin': 'Inicia sesión aquí',
+    'auth.verify_title': 'Verifica Tu Correo Electrónico',
+    'auth.verify_subtitle': 'Por favor confirma tu correo electrónico para activar tu cuenta',
+    'auth.verify_sent_to': 'Hemos enviado un enlace de verificación y código a:',
+    'auth.verify_instructions': 'Revisa tu bandeja de entrada (y carpeta de spam) para activar tu cuenta. Debes verificar tu correo antes de ingresar a tu billetera o terminal comercial.',
+    'auth.verify_enter_code': 'Ingresa el Código de 6 Dígitos (Opcional):',
+    'auth.btn_check_status': 'Comprobar Estado de Verificación',
+    'auth.btn_resend_email': 'Reenviar Correo de Verificación',
+    'auth.btn_instant_activate': 'Verificar y Activar Cuenta Ahora',
+    'auth.verify_success': '¡Correo verificado exitosamente! Tu cuenta ya está activa.',
+    'auth.verify_pending_error': 'Tu cuenta está pendiente de verificación de correo. Por favor verifícalo antes de iniciar sesión.',
 
     // PIN Verification Modal
     'pin_modal.title': 'Verificación de PIN de Seguridad',

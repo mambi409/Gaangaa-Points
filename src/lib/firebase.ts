@@ -18,7 +18,11 @@ import {
   signInWithEmailAndPassword,
   signOut,
   sendEmailVerification,
-  updateProfile
+  updateProfile,
+  reload,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  applyActionCode
 } from 'firebase/auth';
 import firebaseConfigData from '../../firebase-applet-config.json';
 
@@ -97,7 +101,11 @@ export {
   signInWithEmailAndPassword,
   signOut,
   sendEmailVerification,
-  updateProfile
+  updateProfile,
+  reload,
+  onAuthStateChanged,
+  sendPasswordResetEmail,
+  applyActionCode
 };
 
 
