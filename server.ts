@@ -86,7 +86,11 @@ import {
   adminTasksData,
   auditLogsData,
   postsData,
-  RegisteredUser
+  RegisteredUser,
+  db,
+  getDocs,
+  collection,
+  fetchLatestUsers
 } from './server/dbSync.js';
 
 // In-Memory Fallback State (delegated to dbSync)

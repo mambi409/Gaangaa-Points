@@ -671,3 +671,35 @@ export async function deleteUser(username: string) {
   }
 }
 
+export { db, collection, getDocs, doc, setDoc, getDoc, deleteDoc };
+
+export async function fetchLatestUsers(): Promise<RegisteredUser[]> {
+  if (db) {
+    try {
+      const usersSnap = await getDocs(collection(db, 'users'));
+      if (!usersSnap.empty) {
+        const freshUsers: RegisteredUser[] = [];
+        usersSnap.forEach((d) => {
+          freshUsers.push(d.data() as RegisteredUser);
+        });
+        for (const u of freshUsers) {
+          const idx = usersDB.findIndex((x) => x.username.toLowerCase() === u.username.toLowerCase());
+          if (idx >= 0) {
+            usersDB[idx] = { ...usersDB[idx], ...u };
+          } else {
+            usersDB.push(u);
+          }
+        }
+      } else {
+        // Seed default members if Firestore users collection is empty
+        for (const u of usersDB) {
+          await setDoc(doc(db, 'users', u.username.toLowerCase()), u);
+        }
+      }
+    } catch (err) {
+      console.warn('[Firestore] Live users fetch notice:', err);
+    }
+  }
+  return usersDB;
+}
+
