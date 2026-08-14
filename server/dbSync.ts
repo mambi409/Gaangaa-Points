@@ -7,6 +7,7 @@ import {
   setDoc,
   addDoc,
   updateDoc,
+  deleteDoc,
   query,
   where
 } from '../src/lib/firebase.js';
@@ -25,7 +26,10 @@ import {
   Transaction,
   NotificationMessage,
   AdminTask,
-  SystemAuditLog
+  SystemAuditLog,
+  AdminPost,
+  UserTier,
+  UserRole
 } from '../src/types.js';
 
 export interface RegisteredUser {
@@ -35,7 +39,12 @@ export interface RegisteredUser {
   email: string;
   passId: string;
   pinCode: string;
-  role?: 'user' | 'merchant' | 'admin';
+  role?: UserRole;
+  pointsBalance?: number;
+  lifetimePoints?: number;
+  currentTier?: UserTier;
+  createdAt?: string;
+  status?: 'active' | 'suspended';
 }
 
 export let storesData: Store[] = [...INITIAL_STORES];
@@ -43,6 +52,50 @@ export let rewardsData: RewardItem[] = [...INITIAL_REWARDS];
 export let walletData: UserWallet = JSON.parse(JSON.stringify(INITIAL_WALLET));
 export let transactionsData: Transaction[] = [...INITIAL_TRANSACTIONS];
 export let notificationsData: NotificationMessage[] = [...INITIAL_NOTIFICATIONS];
+
+export const INITIAL_POSTS: AdminPost[] = [
+  {
+    id: 'post-1',
+    title: 'Double Points Weekend across All Artisan Coffee Locations ☕',
+    content: 'Get ready for Double Points weekend starting this Friday! Earn 20 points per $1 spent at Blue Bottle, Artisanal Roastery, and Ritual Coffee. Automatic bonus credits at checkout.',
+    category: 'Promotion',
+    imageUrl: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=1200&q=80',
+    author: 'Mambi Administrator',
+    targetAudience: 'all',
+    status: 'published',
+    createdAt: new Date(Date.now() - 3600000 * 24).toISOString(),
+    likesCount: 142,
+    featured: true
+  },
+  {
+    id: 'post-2',
+    title: 'New Tier Perks Unlocked: Gold & Platinum Members Receive Free Delivery 🚀',
+    content: 'We are thrilled to announce exclusive perks for our Gold and Platinum loyalty tier members! Enjoy zero delivery fees at partner boutiques, early access to limited reward drops, and 1.5x points multiplier.',
+    category: 'Announcement',
+    imageUrl: 'https://images.unsplash.com/photo-1556742049-0a67c5574f73?auto=format&fit=crop&w=1200&q=80',
+    author: 'Mambi Administrator',
+    targetAudience: 'user',
+    status: 'published',
+    createdAt: new Date(Date.now() - 3600000 * 72).toISOString(),
+    likesCount: 89,
+    featured: false
+  },
+  {
+    id: 'post-3',
+    title: 'Merchant POS Terminal Update v4.2 Released',
+    content: 'Partner merchants can now scan member QR codes offline with instant local validation and background sync when connection is restored. Check the POS update tab for firmware installation.',
+    category: 'Update',
+    imageUrl: 'https://images.unsplash.com/photo-1556740758-90de374c12ad?auto=format&fit=crop&w=1200&q=80',
+    author: 'Mambi Administrator',
+    targetAudience: 'merchant',
+    status: 'published',
+    createdAt: new Date(Date.now() - 3600000 * 120).toISOString(),
+    likesCount: 34,
+    featured: false
+  }
+];
+
+export let postsData: AdminPost[] = [...INITIAL_POSTS];
 
 export const INITIAL_ADMIN_TASKS: AdminTask[] = [
   {
@@ -163,7 +216,12 @@ export let usersDB: RegisteredUser[] = [
     email: 'mambiadmin@omniloyalty.internal',
     passId: 'ADMIN-409-SF',
     pinCode: '40900',
-    role: 'admin'
+    role: 'admin',
+    pointsBalance: 50000,
+    lifetimePoints: 120000,
+    currentTier: 'Platinum',
+    status: 'active',
+    createdAt: '2026-01-10T08:00:00.000Z'
   },
   {
     username: 'mambi409',
@@ -172,7 +230,54 @@ export let usersDB: RegisteredUser[] = [
     email: 'mambi409@example.com',
     passId: 'PASS-9842-SF',
     pinCode: '12345',
-    role: 'user'
+    role: 'user',
+    pointsBalance: 1250,
+    lifetimePoints: 2450,
+    currentTier: 'Gold',
+    status: 'active',
+    createdAt: '2026-02-14T14:30:00.000Z'
+  },
+  {
+    username: 'mayalin',
+    password: 'userPass2026',
+    fullName: 'Maya Lin',
+    email: 'maya.lin@sfdesign.co',
+    passId: 'PASS-5512-SF',
+    pinCode: '33412',
+    role: 'user',
+    pointsBalance: 2480,
+    lifetimePoints: 5800,
+    currentTier: 'Platinum',
+    status: 'active',
+    createdAt: '2026-03-01T10:15:00.000Z'
+  },
+  {
+    username: 'marcuschen',
+    password: 'userPass2026',
+    fullName: 'Marcus Chen',
+    email: 'marcus.chen@techbay.io',
+    passId: 'PASS-7729-SF',
+    pinCode: '88219',
+    role: 'user',
+    pointsBalance: 890,
+    lifetimePoints: 1600,
+    currentTier: 'Silver',
+    status: 'active',
+    createdAt: '2026-04-18T16:45:00.000Z'
+  },
+  {
+    username: 'sofiarodriguez',
+    password: 'userPass2026',
+    fullName: 'Sofia Rodriguez',
+    email: 'sofia.r@valenciagoods.com',
+    passId: 'PASS-3318-SF',
+    pinCode: '45021',
+    role: 'user',
+    pointsBalance: 320,
+    lifetimePoints: 480,
+    currentTier: 'Bronze',
+    status: 'active',
+    createdAt: '2026-06-22T09:20:00.000Z'
   },
   {
     username: 'merchant_sf',
@@ -181,7 +286,12 @@ export let usersDB: RegisteredUser[] = [
     email: 'merchant@roastery.com',
     passId: 'MERCHANT-POS-101',
     pinCode: '12345',
-    role: 'merchant'
+    role: 'merchant',
+    pointsBalance: 14500,
+    lifetimePoints: 34000,
+    currentTier: 'Platinum',
+    status: 'active',
+    createdAt: '2026-01-15T11:00:00.000Z'
   }
 ];
 
@@ -308,6 +418,25 @@ export async function initFirestoreSync() {
         (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
       );
       console.log(`[Firestore] Loaded ${notificationsData.length} notifications from Firestore.`);
+    }
+
+    // 7. Sync Posts
+    const postsColRef = collection(db, 'posts');
+    const postsSnap = await getDocs(postsColRef);
+    if (postsSnap.empty) {
+      console.log('[Firestore] Populating initial posts to Firestore...');
+      for (const p of postsData) {
+        await setDoc(doc(db, 'posts', p.id), p);
+      }
+    } else {
+      postsData.length = 0;
+      postsSnap.forEach((d) => {
+        postsData.push(d.data() as AdminPost);
+      });
+      postsData.sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+      console.log(`[Firestore] Loaded ${postsData.length} posts from Firestore.`);
     }
 
     console.log('[Firestore] ✅ All Firestore collections synchronized successfully!');
@@ -490,6 +619,54 @@ export async function persistTask(task: AdminTask) {
       await setDoc(doc(db, 'admin_tasks', task.id), task);
     } catch (e) {
       console.error('Failed to persist task to Firestore:', e);
+    }
+  }
+}
+
+export async function persistPost(post: AdminPost) {
+  const idx = postsData.findIndex((p) => p.id === post.id);
+  if (idx >= 0) {
+    postsData[idx] = post;
+  } else {
+    postsData.unshift(post);
+  }
+  if (db) {
+    try {
+      await setDoc(doc(db, 'posts', post.id), post);
+    } catch (e) {
+      console.error('Failed to persist post to Firestore:', e);
+    }
+  }
+}
+
+export async function deletePost(postId: string) {
+  const idx = postsData.findIndex((p) => p.id === postId);
+  if (idx >= 0) {
+    postsData.splice(idx, 1);
+  }
+  if (db) {
+    try {
+      await deleteDoc(doc(db, 'posts', postId));
+    } catch (e) {
+      console.error('Failed to delete post from Firestore:', e);
+    }
+  }
+}
+
+export async function deleteUser(username: string) {
+  const idx = usersDB.findIndex((u) => u.username.toLowerCase() === username.toLowerCase());
+  if (idx >= 0) {
+    const u = usersDB[idx];
+    usersDB.splice(idx, 1);
+    if (db) {
+      try {
+        await deleteDoc(doc(db, 'users', u.username.toLowerCase()));
+        if (u.email) {
+          await deleteDoc(doc(db, 'users', u.email.toLowerCase()));
+        }
+      } catch (e) {
+        console.error('Failed to delete user from Firestore:', e);
+      }
     }
   }
 }

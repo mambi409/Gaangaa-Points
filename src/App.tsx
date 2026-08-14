@@ -497,17 +497,8 @@ export default function App() {
       />
 
       {/* Main Body Content Container */}
-      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-8">
-        {activeView === 'home' && currentRole !== 'admin' ? (
-          /* Public Home Landing Page */
-          <Home
-            stores={stores}
-            onOpenMemberAuth={(mode) => handleOpenAuth('user', mode)}
-            onOpenMerchantAuth={() => handleOpenAuth('merchant', 'login')}
-            onExploreStores={() => setActiveView('explore')}
-          />
-        ) : currentRole === 'admin' ? (
-          /* Central Admin Dashboard View */
+      {currentRole === 'admin' ? (
+        <main className="w-full flex-1 flex flex-col">
           <AdminDashboard
             adminUser={authUser}
             onLogout={handleLogout}
@@ -516,74 +507,86 @@ export default function App() {
               if (r === 'user') setActiveView('wallet');
             }}
           />
-        ) : currentRole === 'user' ? (
-          <>
-            {/* View Switching Logic for Customer App */}
-            {activeView === 'wallet' && (
-              <DigitalWallet
-                wallet={wallet}
-                transactions={transactions}
-                onOpenScanEarn={() => setIsScanEarnOpen(true)}
-                onSelectStore={(storeId) => {
-                  const s = stores.find((item) => item.id === storeId);
-                  if (s) {
-                    setSelectedStore(s);
-                    setActiveView('explore');
-                  }
-                }}
-              />
-            )}
+        </main>
+      ) : (
+        <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 space-y-8">
+          {activeView === 'home' ? (
+            /* Public Home Landing Page */
+            <Home
+              stores={stores}
+              onOpenMemberAuth={(mode) => handleOpenAuth('user', mode)}
+              onOpenMerchantAuth={() => handleOpenAuth('merchant', 'login')}
+              onExploreStores={() => setActiveView('explore')}
+            />
+          ) : currentRole === 'user' ? (
+            <>
+              {/* View Switching Logic for Customer App */}
+              {activeView === 'wallet' && (
+                <DigitalWallet
+                  wallet={wallet}
+                  transactions={transactions}
+                  onOpenScanEarn={() => setIsScanEarnOpen(true)}
+                  onSelectStore={(storeId) => {
+                    const s = stores.find((item) => item.id === storeId);
+                    if (s) {
+                      setSelectedStore(s);
+                      setActiveView('explore');
+                    }
+                  }}
+                />
+              )}
 
-            {activeView === 'explore' && (
-              <StoreFinder
-                stores={stores}
-                rewards={rewards.length > 0 ? rewards : wallet.vouchers.map(v => ({
-                  id: v.rewardId,
-                  storeId: v.storeId,
-                  storeName: v.storeName,
-                  title: v.title,
-                  description: 'Store reward deal',
-                  pointsCost: v.pointsSpent,
-                  category: 'General',
-                  image: '',
-                  expiryDays: 30,
-                  code: v.qrCode,
-                  discountValue: 'Special Reward'
-                }))}
-                userPoints={wallet.pointsBalance}
-                onNavigateToStore={handleStartNavigation}
-                onRedeemReward={handleRedeemReward}
-                selectedCategory={selectedCategory}
-                onSelectCategory={setSelectedCategory}
-                searchQuery={searchQuery}
-                onSearchChange={setSearchQuery}
-              />
-            )}
+              {activeView === 'explore' && (
+                <StoreFinder
+                  stores={stores}
+                  rewards={rewards.length > 0 ? rewards : wallet.vouchers.map(v => ({
+                    id: v.rewardId,
+                    storeId: v.storeId,
+                    storeName: v.storeName,
+                    title: v.title,
+                    description: 'Store reward deal',
+                    pointsCost: v.pointsSpent,
+                    category: 'General',
+                    image: '',
+                    expiryDays: 30,
+                    code: v.qrCode,
+                    discountValue: 'Special Reward'
+                  }))}
+                  userPoints={wallet.pointsBalance}
+                  onNavigateToStore={handleStartNavigation}
+                  onRedeemReward={handleRedeemReward}
+                  selectedCategory={selectedCategory}
+                  onSelectCategory={setSelectedCategory}
+                  searchQuery={searchQuery}
+                  onSearchChange={setSearchQuery}
+                />
+              )}
 
-            {activeView === 'map' && (
-              <InteractiveMap
-                stores={stores}
-                selectedStore={selectedStore}
-                onSelectStore={setSelectedStore}
-                userLat={INITIAL_USER_LOCATION.lat}
-                userLng={INITIAL_USER_LOCATION.lng}
-                activeRoute={activeRoute}
-                onStartNavigation={handleStartNavigation}
-              />
-            )}
-          </>
-        ) : (
-          /* Merchant Dashboard View */
-          <MerchantDashboard
-            stores={stores}
-            selectedStoreId={selectedMerchantStoreId}
-            onSelectStore={setSelectedMerchantStoreId}
-            onOpenPOSTerminal={() => setIsPOSTerminalOpen(true)}
-            onOpenAddReward={() => setIsAddRewardOpen(true)}
-            onOpenPushBroadcaster={() => setIsPushBroadcasterOpen(true)}
-          />
-        )}
-      </main>
+              {activeView === 'map' && (
+                <InteractiveMap
+                  stores={stores}
+                  selectedStore={selectedStore}
+                  onSelectStore={setSelectedStore}
+                  userLat={INITIAL_USER_LOCATION.lat}
+                  userLng={INITIAL_USER_LOCATION.lng}
+                  activeRoute={activeRoute}
+                  onStartNavigation={handleStartNavigation}
+                />
+              )}
+            </>
+          ) : (
+            /* Merchant Dashboard View */
+            <MerchantDashboard
+              stores={stores}
+              selectedStoreId={selectedMerchantStoreId}
+              onSelectStore={setSelectedMerchantStoreId}
+              onOpenPOSTerminal={() => setIsPOSTerminalOpen(true)}
+              onOpenAddReward={() => setIsAddRewardOpen(true)}
+              onOpenPushBroadcaster={() => setIsPushBroadcasterOpen(true)}
+            />
+          )}
+        </main>
+      )}
 
       {/* Customer In-Store Point Collector Modal */}
       <ScanEarnModal

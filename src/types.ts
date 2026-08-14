@@ -182,3 +182,33 @@ export interface AdminOverviewStats {
   };
 }
 
+export interface AdminPost {
+  id: string;
+  title: string;
+  content: string;
+  category: 'Announcement' | 'Promotion' | 'Update' | 'Reward Alert' | 'Community';
+  imageUrl?: string;
+  author: string;
+  targetAudience: 'all' | 'user' | 'merchant';
+  status: 'published' | 'draft';
+  createdAt: string;
+  updatedAt?: string;
+  likesCount?: number;
+  featured?: boolean;
+}
+
+export interface AdminUserItem {
+  username: string;
+  password?: string;
+  fullName: string;
+  email: string;
+  passId: string;
+  pinCode: string;
+  role: UserRole;
+  pointsBalance: number;
+  lifetimePoints?: number;
+  currentTier: UserTier;
+  createdAt?: string;
+  status?: 'active' | 'suspended';
+}
+

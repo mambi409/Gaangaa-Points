@@ -24,6 +24,8 @@ import {
   AdminTask,
   SystemAuditLog,
   AdminOverviewStats,
+  AdminPost,
+  AdminUserItem,
   UserRole
 } from './src/types';
 
@@ -72,6 +74,9 @@ import {
   persistStore,
   persistAuditLog,
   persistTask,
+  persistPost,
+  deletePost,
+  deleteUser,
   storesData,
   rewardsData,
   walletData,
@@ -80,6 +85,7 @@ import {
   usersDB,
   adminTasksData,
   auditLogsData,
+  postsData,
   RegisteredUser
 } from './server/dbSync.js';
 
@@ -1066,15 +1072,329 @@ app.get('/api/admin/overview', (req, res) => {
         email: u.email,
         passId: u.passId,
         role: u.role || (u.username.toLowerCase() === 'mambiadmin' ? 'admin' : 'user'),
-        pinCode: u.pinCode ? '••••• (Set)' : 'Unset'
+        pinCode: u.pinCode ? '••••• (Set)' : 'Unset',
+        pointsBalance: u.username.toLowerCase() === 'mambi409' ? walletData.pointsBalance : (u.pointsBalance ?? 100),
+        lifetimePoints: u.username.toLowerCase() === 'mambi409' ? walletData.lifetimePoints : (u.lifetimePoints ?? 250),
+        currentTier: u.username.toLowerCase() === 'mambi409' ? walletData.currentTier : (u.currentTier ?? 'Bronze'),
+        status: u.status || 'active',
+        createdAt: u.createdAt || new Date(Date.now() - 3600000 * 24 * 30).toISOString()
       })),
-      recentTransactions: transactionsData.slice(0, 10),
+      posts: postsData,
+      recentTransactions: transactionsData.slice(0, 15),
       stores: storesData,
       tasks: adminTasksData,
-      auditLogs: auditLogsData.slice(0, 15)
+      auditLogs: auditLogsData.slice(0, 20)
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch admin overview' });
+  }
+});
+
+// API ROUTE: Get Posts
+app.get('/api/admin/posts', (req, res) => {
+  res.json({ posts: postsData });
+});
+
+// API ROUTE: Create Post
+app.post('/api/admin/posts/create', async (req, res) => {
+  try {
+    const { title, content, category, imageUrl, author, targetAudience, status, featured } = req.body;
+
+    if (!title || !content) {
+      return res.status(400).json({ error: 'Title and content are required' });
+    }
+
+    const newPost: AdminPost = {
+      id: `post-${Date.now()}`,
+      title,
+      content,
+      category: category || 'Announcement',
+      imageUrl: imageUrl || 'https://images.unsplash.com/photo-1556742049-0a67c5574f73?auto=format&fit=crop&w=1200&q=80',
+      author: author || 'Mambi Administrator',
+      targetAudience: targetAudience || 'all',
+      status: status || 'published',
+      createdAt: new Date().toISOString(),
+      likesCount: 0,
+      featured: !!featured
+    };
+
+    await persistPost(newPost);
+
+    // If published, also send as a notification so it appears immediately across user alerts
+    if (newPost.status === 'published') {
+      const notif: NotificationMessage = {
+        id: `notif-post-${Date.now()}`,
+        title: `📢 ${newPost.title}`,
+        body: newPost.content.slice(0, 140) + (newPost.content.length > 140 ? '...' : ''),
+        type: 'promo',
+        timestamp: new Date().toISOString(),
+        read: false,
+        targetRole: (newPost.targetAudience as any) || 'all'
+      };
+      await persistNotification(notif);
+    }
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Post Created: "${newPost.title}"`,
+      type: 'system',
+      severity: 'info',
+      details: `Created new post under category ${newPost.category} (${newPost.status}). Target audience: ${newPost.targetAudience}`,
+      user: author || 'mambiadmin'
+    };
+    await persistAuditLog(log);
+
+    res.json({ success: true, post: newPost, posts: postsData });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create post' });
+  }
+});
+
+// API ROUTE: Update Post
+app.put('/api/admin/posts/update', async (req, res) => {
+  try {
+    const { id, title, content, category, imageUrl, targetAudience, status, featured } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Post ID is required' });
+    }
+
+    const existingIdx = postsData.findIndex((p) => p.id === id);
+    if (existingIdx === -1) {
+      return res.status(404).json({ error: 'Post not found' });
+    }
+
+    const updatedPost: AdminPost = {
+      ...postsData[existingIdx],
+      title: title ?? postsData[existingIdx].title,
+      content: content ?? postsData[existingIdx].content,
+      category: category ?? postsData[existingIdx].category,
+      imageUrl: imageUrl ?? postsData[existingIdx].imageUrl,
+      targetAudience: targetAudience ?? postsData[existingIdx].targetAudience,
+      status: status ?? postsData[existingIdx].status,
+      featured: featured !== undefined ? featured : postsData[existingIdx].featured,
+      updatedAt: new Date().toISOString()
+    };
+
+    await persistPost(updatedPost);
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Post Updated: "${updatedPost.title}"`,
+      type: 'system',
+      severity: 'info',
+      details: `Updated post ${id} (${updatedPost.status}).`,
+      user: 'mambiadmin'
+    };
+    await persistAuditLog(log);
+
+    res.json({ success: true, post: updatedPost, posts: postsData });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update post' });
+  }
+});
+
+// API ROUTE: Delete Post
+app.delete('/api/admin/posts/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deletePost(id);
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Post Deleted: ${id}`,
+      type: 'system',
+      severity: 'warning',
+      details: `Admin deleted post ${id}.`,
+      user: 'mambiadmin'
+    };
+    await persistAuditLog(log);
+
+    res.json({ success: true, message: 'Post deleted successfully', posts: postsData });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete post' });
+  }
+});
+
+// API ROUTE: Create User Manually
+app.post('/api/admin/users/create', async (req, res) => {
+  try {
+    const { username, fullName, email, password, pinCode, role, initialPoints, tier } = req.body;
+
+    if (!username || !fullName) {
+      return res.status(400).json({ error: 'Username and Full Name are required.' });
+    }
+
+    const cleanUsername = username.trim().toLowerCase();
+    const existing = await findUser(cleanUsername);
+    if (existing) {
+      return res.status(400).json({ error: `Username or email "${username}" is already in use.` });
+    }
+
+    const points = parseInt(initialPoints, 10) || 500;
+    const userRole: UserRole = role === 'admin' || role === 'merchant' ? role : 'user';
+    const userTier: UserTier = tier || (points >= 2500 ? 'Platinum' : points >= 1200 ? 'Gold' : points >= 500 ? 'Silver' : 'Bronze');
+    const passNumber = Math.floor(1000 + Math.random() * 9000);
+
+    const newUser: RegisteredUser = {
+      username: cleanUsername,
+      password: password || 'omniPass2026',
+      fullName: fullName.trim(),
+      email: email ? email.trim().toLowerCase() : `${cleanUsername}@omniloyalty.internal`,
+      passId: userRole === 'admin' ? `ADMIN-${passNumber}-SF` : userRole === 'merchant' ? `MERCHANT-POS-${passNumber}` : `PASS-${passNumber}-SF`,
+      pinCode: pinCode ? String(pinCode).trim() : '12345',
+      role: userRole,
+      pointsBalance: points,
+      lifetimePoints: points,
+      currentTier: userTier,
+      status: 'active',
+      createdAt: new Date().toISOString()
+    };
+
+    await persistUser(newUser);
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Manual User Account Created: @${newUser.username}`,
+      type: 'security',
+      severity: 'success',
+      details: `Created ${newUser.role} account for ${newUser.fullName} (${newUser.email}) with ${points} points (${newUser.currentTier} tier). Pass ID: ${newUser.passId}`,
+      user: 'mambiadmin'
+    };
+    await persistAuditLog(log);
+
+    res.json({
+      success: true,
+      message: `User @${newUser.username} created successfully.`,
+      user: newUser
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// API ROUTE: Edit / Update User Profile
+app.put('/api/admin/users/update', async (req, res) => {
+  try {
+    const { username, fullName, email, role, pinCode, password, status, pointsBalance, currentTier } = req.body;
+
+    if (!username) {
+      return res.status(400).json({ error: 'Target username is required' });
+    }
+
+    const clean = username.trim().toLowerCase();
+    const userIdx = usersDB.findIndex(
+      (u) => u.username.toLowerCase() === clean || (u.email && u.email.toLowerCase() === clean)
+    );
+
+    if (userIdx === -1) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const user = usersDB[userIdx];
+    if (fullName) user.fullName = fullName.trim();
+    if (email) user.email = email.trim().toLowerCase();
+    if (role) user.role = role;
+    if (pinCode) user.pinCode = String(pinCode).trim();
+    if (password) user.password = password;
+    if (status) user.status = status;
+    if (pointsBalance !== undefined) {
+      const p = parseInt(pointsBalance, 10);
+      if (!isNaN(p)) {
+        user.pointsBalance = Math.max(0, p);
+        if (clean === 'mambi409') {
+          walletData.pointsBalance = user.pointsBalance;
+          await persistWallet();
+        }
+      }
+    }
+    if (currentTier) {
+      user.currentTier = currentTier;
+      if (clean === 'mambi409') {
+        walletData.currentTier = currentTier;
+        await persistWallet();
+      }
+    }
+
+    await persistUser(user);
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `User Profile Updated: @${user.username}`,
+      type: 'adjustment',
+      severity: 'info',
+      details: `Updated details for ${user.fullName} (@${user.username}). Role: ${user.role}, Tier: ${user.currentTier}, Points: ${user.pointsBalance}`,
+      user: 'mambiadmin'
+    };
+    await persistAuditLog(log);
+
+    res.json({
+      success: true,
+      message: `User @${user.username} updated successfully.`,
+      user
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// API ROUTE: Delete User Account
+app.delete('/api/admin/users/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    if (username.toLowerCase() === 'mambiadmin') {
+      return res.status(403).json({ error: 'Root administrator account cannot be deleted.' });
+    }
+
+    await deleteUser(username);
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `User Account Deleted: @${username}`,
+      type: 'security',
+      severity: 'warning',
+      details: `Admin deleted user account @${username}.`,
+      user: 'mambiadmin'
+    };
+    await persistAuditLog(log);
+
+    res.json({ success: true, message: `User @${username} deleted successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// API ROUTE: Get Single User Details + Transactions
+app.get('/api/admin/users/:username', async (req, res) => {
+  try {
+    const { username } = req.params;
+    const clean = username.trim().toLowerCase();
+    const user = await findUser(clean);
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const pts = clean === 'mambi409' ? walletData.pointsBalance : (user.pointsBalance ?? 100);
+    const tier = clean === 'mambi409' ? walletData.currentTier : (user.currentTier ?? 'Bronze');
+
+    res.json({
+      user: {
+        ...user,
+        pointsBalance: pts,
+        currentTier: tier,
+        lifetimePoints: clean === 'mambi409' ? walletData.lifetimePoints : (user.lifetimePoints ?? pts + 150)
+      },
+      transactions: transactionsData.slice(0, 10)
+    });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to get user details' });
   }
 });
 
