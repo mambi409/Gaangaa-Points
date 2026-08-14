@@ -583,6 +583,14 @@ export default function App() {
               onOpenPOSTerminal={() => setIsPOSTerminalOpen(true)}
               onOpenAddReward={() => setIsAddRewardOpen(true)}
               onOpenPushBroadcaster={() => setIsPushBroadcasterOpen(true)}
+              onStoreUpdated={(updatedStore) => {
+                setStores((prev) =>
+                  prev.map((s) => (s.id === updatedStore.id ? updatedStore : s))
+                );
+                if (selectedStore?.id === updatedStore.id) {
+                  setSelectedStore(updatedStore);
+                }
+              }}
             />
           )}
         </main>

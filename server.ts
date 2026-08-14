@@ -749,7 +749,7 @@ app.post('/api/notifications/mark-read', async (req, res) => {
   res.json({ success: true });
 });
 
-// API ROUTE: Get Merchant Dashboard Data
+// API ROUTE: Get Merchant Dashboard Data & Points Rewarded Metrics
 app.get('/api/merchant/stats', (req, res) => {
   const { storeId } = req.query;
   const activeStoreId = (storeId as string) || 'store-1';
@@ -757,13 +757,35 @@ app.get('/api/merchant/stats', (req, res) => {
 
   const storeTxs = transactionsData.filter((t) => t.storeId === store.id);
   const issuedToday = storeTxs
-    .filter((t) => t.type === 'earn')
+    .filter((t) => t.type === 'earn' || t.type === 'bonus')
     .reduce((sum, t) => sum + t.points, 0);
   const redeemedToday = Math.abs(
     storeTxs
       .filter((t) => t.type === 'redeem')
       .reduce((sum, t) => sum + t.points, 0)
   );
+
+  const totalPointsEarnedFromTxs = storeTxs
+    .filter((t) => t.type === 'earn' || t.type === 'bonus')
+    .reduce((sum, t) => sum + t.points, 0);
+
+  const totalPointsRewardedAllTime = (store.totalPointsRewarded || 28500) + totalPointsEarnedFromTxs;
+  const totalPointsRedeemedAllTime = (store.totalPointsRedeemed || 9400) + Math.abs(storeTxs.filter(t => t.type === 'redeem').reduce((s, t) => s + t.points, 0));
+
+  const totalRevenue = 12450.0 + storeTxs.reduce((sum, t) => sum + (t.amountSpent || 0), 0);
+  const earnTxCount = storeTxs.filter((t) => t.type === 'earn').length + 48;
+  const averagePointsPerSale = Math.round(totalPointsRewardedAllTime / Math.max(1, earnTxCount));
+
+  // Points by source breakdown
+  const posSalesPts = Math.round(totalPointsRewardedAllTime * 0.78);
+  const qrWalkinPts = Math.round(totalPointsRewardedAllTime * 0.14);
+  const bonusCampaignPts = totalPointsRewardedAllTime - posSalesPts - qrWalkinPts;
+
+  const pointsBySource = [
+    { source: 'POS Checkout Purchases', points: posSalesPts, count: Math.round(earnTxCount * 0.8), percentage: 78 },
+    { source: 'In-Store Walk-In QR Check-Ins', points: qrWalkinPts, count: Math.round(earnTxCount * 0.15), percentage: 14 },
+    { source: 'Special Bonus Multipliers & Campaigns', points: bonusCampaignPts, count: Math.round(earnTxCount * 0.05), percentage: 8 }
+  ];
 
   const stats: MerchantStats = {
     storeId: store.id,
@@ -774,10 +796,115 @@ app.get('/api/merchant/stats', (req, res) => {
     todayRevenueEstimate: 420.50 + storeTxs.reduce((sum, t) => sum + (t.amountSpent || 0), 0),
     activeMembersCount: 285 + storeTxs.length,
     recentActivity: storeTxs.length > 0 ? storeTxs : INITIAL_TRANSACTIONS,
-    monthlyDistribution: INITIAL_MERCHANT_STATS.monthlyDistribution
+    monthlyDistribution: INITIAL_MERCHANT_STATS.monthlyDistribution,
+    totalPointsRewardedAllTime,
+    totalPointsRedeemedAllTime,
+    totalRevenueAllTime: Math.round(totalRevenue * 100) / 100,
+    averagePointsPerSale,
+    pointsBySource
   };
 
-  res.json({ stats, storeRewards: rewardsData.filter((r) => r.storeId === store.id) });
+  res.json({ stats, storeRewards: rewardsData.filter((r) => r.storeId === store.id), store });
+});
+
+// API ROUTE: Merchant Update Store Info (Address, Map Location, Hours, Category, Phone, Email)
+app.post('/api/merchant/store/update', async (req, res) => {
+  try {
+    const {
+      id,
+      name,
+      category,
+      address,
+      city,
+      lat,
+      lng,
+      openHours,
+      phone,
+      email,
+      secondaryPhone,
+      website,
+      description,
+      pointsRate,
+      perks,
+      schedule,
+      managerName,
+      socialHandle,
+      image
+    } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Store ID is required' });
+    }
+
+    let existingStoreIdx = storesData.findIndex((s) => s.id === id);
+    let updatedStore: Store;
+
+    if (existingStoreIdx >= 0) {
+      updatedStore = {
+        ...storesData[existingStoreIdx],
+        name: name !== undefined ? name : storesData[existingStoreIdx].name,
+        category: category !== undefined ? category : storesData[existingStoreIdx].category,
+        address: address !== undefined ? address : storesData[existingStoreIdx].address,
+        city: city !== undefined ? city : storesData[existingStoreIdx].city,
+        lat: lat !== undefined ? parseFloat(lat) : storesData[existingStoreIdx].lat,
+        lng: lng !== undefined ? parseFloat(lng) : storesData[existingStoreIdx].lng,
+        openHours: openHours !== undefined ? openHours : storesData[existingStoreIdx].openHours,
+        phone: phone !== undefined ? phone : storesData[existingStoreIdx].phone,
+        email: email !== undefined ? email : (storesData[existingStoreIdx].email || `${storesData[existingStoreIdx].name.toLowerCase().replace(/[^a-z0-9]/g, '')}@omniloyalty.internal`),
+        secondaryPhone: secondaryPhone !== undefined ? secondaryPhone : storesData[existingStoreIdx].secondaryPhone,
+        website: website !== undefined ? website : storesData[existingStoreIdx].website,
+        description: description !== undefined ? description : storesData[existingStoreIdx].description,
+        pointsRate: pointsRate !== undefined ? parseInt(pointsRate, 10) : storesData[existingStoreIdx].pointsRate,
+        perks: perks !== undefined ? perks : storesData[existingStoreIdx].perks,
+        schedule: schedule !== undefined ? schedule : storesData[existingStoreIdx].schedule,
+        managerName: managerName !== undefined ? managerName : storesData[existingStoreIdx].managerName,
+        socialHandle: socialHandle !== undefined ? socialHandle : storesData[existingStoreIdx].socialHandle,
+        image: image !== undefined ? image : storesData[existingStoreIdx].image
+      };
+      storesData[existingStoreIdx] = updatedStore;
+    } else {
+      updatedStore = {
+        id,
+        name: name || 'New Partner Store',
+        category: category || 'Coffee',
+        address: address || '100 Market St',
+        city: city || 'San Francisco',
+        lat: lat ? parseFloat(lat) : 37.7891,
+        lng: lng ? parseFloat(lng) : -122.4082,
+        rating: 5.0,
+        reviewCount: 1,
+        image: image || 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80',
+        pointsRate: pointsRate ? parseInt(pointsRate, 10) : 10,
+        description: description || 'Loyalty partner store outlet',
+        openHours: openHours || '8:00 AM - 8:00 PM',
+        phone: phone || '(415) 555-0100',
+        email: email || 'store@omniloyalty.internal',
+        secondaryPhone,
+        website,
+        perks: perks || ['Loyalty Rewards', 'Member Deals'],
+        schedule
+      };
+      storesData.push(updatedStore);
+    }
+
+    await persistStore(updatedStore);
+
+    const log: SystemAuditLog = {
+      id: `audit-store-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Store Profile Updated: ${updatedStore.name}`,
+      type: 'security',
+      severity: 'info',
+      details: `Merchant updated store details: address (${updatedStore.address}), category (${updatedStore.category}), GPS coordinates (${updatedStore.lat}, ${updatedStore.lng}), phone (${updatedStore.phone}), email (${updatedStore.email})`,
+      user: 'merchant'
+    };
+    await persistAuditLog(log);
+
+    res.json({ success: true, store: updatedStore, message: 'Store profile successfully updated and synchronized to cloud database' });
+  } catch (err) {
+    console.error('Error updating store:', err);
+    res.status(500).json({ error: 'Failed to update store profile' });
+  }
 });
 
 // API ROUTE: Merchant Scan Member QR & Execute POS Action

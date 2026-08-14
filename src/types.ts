@@ -1,10 +1,26 @@
 export type UserTier = 'Bronze' | 'Silver' | 'Gold' | 'Platinum';
 export type UserRole = 'user' | 'merchant' | 'admin';
 
+export interface DaySchedule {
+  isOpen: boolean;
+  openTime: string;
+  closeTime: string;
+}
+
+export interface StoreWeeklySchedule {
+  monday: DaySchedule;
+  tuesday: DaySchedule;
+  wednesday: DaySchedule;
+  thursday: DaySchedule;
+  friday: DaySchedule;
+  saturday: DaySchedule;
+  sunday: DaySchedule;
+}
+
 export interface Store {
   id: string;
   name: string;
-  category: 'Coffee' | 'Fashion' | 'Grocery' | 'Electronics' | 'Dining' | 'Wellness';
+  category: 'Coffee' | 'Fashion' | 'Grocery' | 'Electronics' | 'Dining' | 'Wellness' | 'Bakery' | 'Beauty' | 'Services' | string;
   address: string;
   city: string;
   lat: number;
@@ -17,8 +33,16 @@ export interface Store {
   distanceKm?: number;
   openHours: string;
   phone: string;
+  email?: string;
+  secondaryPhone?: string;
+  website?: string;
   perks?: string[];
   featuredReward?: string;
+  schedule?: StoreWeeklySchedule;
+  totalPointsRewarded?: number;
+  totalPointsRedeemed?: number;
+  managerName?: string;
+  socialHandle?: string;
 }
 
 export interface RewardItem {
@@ -119,6 +143,11 @@ export interface MerchantStats {
   activeMembersCount: number;
   recentActivity: Transaction[];
   monthlyDistribution: { day: string; pointsIssued: number; pointsRedeemed: number }[];
+  totalPointsRewardedAllTime?: number;
+  totalPointsRedeemedAllTime?: number;
+  totalRevenueAllTime?: number;
+  averagePointsPerSale?: number;
+  pointsBySource?: { source: string; points: number; count: number; percentage: number }[];
 }
 
 export interface AIPerksRequest {
