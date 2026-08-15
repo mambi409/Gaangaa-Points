@@ -41,25 +41,30 @@ export const Home: React.FC<HomeProps> = ({
         {/* Background Image with Current Color Overlay */}
         <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
           <img
-            src="https://cdn.pixabay.com/photo/2020/02/10/16/25/curacao-4939558_1280.jpg"
+            src="/curacao-handelskade.jpg"
             alt="Willemstad Handelskade Curaçao waterfront"
-            className="w-full h-full object-cover object-center transform scale-105"
+            className="w-full h-full object-cover object-center transform scale-105 transition-transform duration-1000 ease-out"
             referrerPolicy="no-referrer"
             onError={(e) => {
               const target = e.currentTarget as HTMLImageElement;
-              if (target.src.includes('cdn.pixabay.com')) {
-                target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Handelskade_Willemstad_Curacao.jpg/1920px-Handelskade_Willemstad_Curacao.jpg';
-              } else if (target.src.includes('Handelskade_Willemstad_Curacao')) {
-                target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Handelskade_in_Willemstad%2C_Curacao.jpg/1920px-Handelskade_in_Willemstad%2C_Curacao.jpg';
+              if (target.src.endsWith('/curacao-handelskade.jpg')) {
+                target.src = '/curacao-handelskade-wide.jpg';
               }
             }}
           />
-          {/* Current color gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-950/75 via-blue-950/65 to-indigo-950/75 backdrop-blur-[0.5px]" />
+          {/* Directional translucent color gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950/90 via-slate-950/70 to-slate-950/30 md:to-indigo-950/20" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent" />
           
           {/* Ambient Lighting Accents */}
           <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
           <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
+        </div>
+
+        {/* Location pill on top right for desktop */}
+        <div className="hidden sm:flex absolute top-6 right-6 z-10 items-center gap-1.5 px-3 py-1.5 rounded-full bg-slate-950/60 border border-white/15 backdrop-blur-md text-[11px] font-semibold text-slate-200">
+          <MapPin className="w-3.5 h-3.5 text-red-400" />
+          <span>Willemstad Handelskade, Curaçao</span>
         </div>
 
         <div className="relative z-10 max-w-3xl space-y-6">
