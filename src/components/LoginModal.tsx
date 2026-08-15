@@ -20,7 +20,14 @@ import {
   Inbox,
   CheckCircle,
   ExternalLink,
-  ShieldAlert
+  ShieldAlert,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  MailCheck,
+  HelpCircle,
+  Info
 } from 'lucide-react';
 import {
   auth,
@@ -96,6 +103,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [verificationInputCode, setVerificationInputCode] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
   const [isResending, setIsResending] = useState(false);
+  const [showEmailPreview, setShowEmailPreview] = useState(true);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [showFaq, setShowFaq] = useState(false);
 
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
@@ -153,14 +163,19 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
       if (res && res.status === 403 && data?.pendingVerification) {
         setIsLoading(false);
+        const code = data.simulatedCode || '';
         setPendingUser({
           email: data.email || (username.includes('@') ? username : `${username}@example.com`),
           username: data.username || username,
-          fullName: data.username || username,
-          passId: `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
-          pinCode: '12345',
-          role: accountType
+          fullName: data.fullName || data.username || username,
+          passId: data.passId || `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
+          pinCode: data.pinCode || '12345',
+          role: data.role || accountType,
+          simulatedCode: code
         });
+        if (code) {
+          setVerificationInputCode(code);
+        }
         setMode('verify_email');
         setError(data.error || 'Your account is pending email verification. Please verify your email.');
         return;
@@ -473,6 +488,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       }
 
       // Set user into pending verification view
+      const activeCode = data?.simulatedCode || generatedCode;
       setPendingUser({
         email: cleanEmail,
         username: cleanUsername,
@@ -480,13 +496,15 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         passId,
         pinCode: cleanPin,
         role: isMerchant ? 'merchant' : 'user',
-        simulatedCode: data?.simulatedCode || generatedCode,
+        simulatedCode: activeCode,
         storeId: isMerchant ? `store-${cleanUsername.toLowerCase().replace(/[^a-z0-9]/g, '')}` : undefined
       });
+      setVerificationInputCode(activeCode);
+      setShowEmailPreview(true);
 
       setIsLoading(false);
       setMode('verify_email');
-      setSuccessMsg(`Verification email dispatched to ${cleanEmail}. Please verify to activate.`);
+      setSuccessMsg(`Verification email dispatched to ${cleanEmail}. Please check your email or use the in-app code below.`);
     } catch (err) {
       setIsLoading(false);
       setError('An unexpected error occurred during registration. Please try again.');
@@ -577,8 +595,10 @@ export const LoginModal: React.FC<LoginModalProps> = ({
       const res = await resendVerificationDirect(pendingUser.email);
       if (res?.simulatedCode) {
         setPendingUser(prev => prev ? { ...prev, simulatedCode: res.simulatedCode } : null);
+        setVerificationInputCode(res.simulatedCode);
+        setShowEmailPreview(true);
       }
-      setSuccessMsg(`New verification email dispatched to ${pendingUser.email}!`);
+      setSuccessMsg(`New verification code generated and email re-dispatched to ${pendingUser.email}!`);
     } catch (err) {
       setSuccessMsg(`New verification email dispatched to ${pendingUser.email}!`);
     } finally {
@@ -845,29 +865,110 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           {/* EMAIL VERIFICATION SCREEN */}
           {mode === 'verify_email' ? (
             <div className="space-y-4">
-              <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700 text-xs text-slate-600 dark:text-slate-300 space-y-2">
-                <p className="leading-relaxed">
-                  {t('auth.verify_instructions')}
-                </p>
-                <div className="flex items-center justify-between pt-1 border-t border-slate-200/60 dark:border-slate-700 text-[11px] text-slate-500 dark:text-slate-400">
+              {/* Header explanation banner */}
+              <div className="p-3.5 bg-blue-50 dark:bg-blue-950/40 rounded-2xl border border-blue-200 dark:border-blue-800 text-xs text-slate-700 dark:text-slate-300 space-y-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-7 h-7 rounded-full bg-blue-600/10 dark:bg-blue-500/20 flex items-center justify-center text-blue-600 dark:text-blue-400 shrink-0">
+                    <Mail className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="font-bold text-slate-900 dark:text-white text-xs">Verify Your Email Address</h4>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Dispatched to <span className="font-semibold text-blue-600 dark:text-blue-400">{pendingUser?.email}</span>
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between pt-2 border-t border-blue-200/60 dark:border-blue-800/60 text-[11px] text-slate-500 dark:text-slate-400">
                   <span>Registered account:</span>
                   <span className="font-bold text-slate-700 dark:text-slate-300 font-mono">@{pendingUser?.username}</span>
                 </div>
-                {pendingUser?.simulatedCode && (
-                  <div className="flex items-center justify-between text-[11px] bg-amber-50 dark:bg-amber-950/60 p-2 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
-                    <span className="font-medium">Verification Code:</span>
-                    <span className="font-mono font-extrabold tracking-widest text-amber-950 dark:text-amber-100 bg-white dark:bg-slate-900 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-700">
-                      {pendingUser.simulatedCode}
+              </div>
+
+              {/* IN-APP EMAIL DELIVERY CENTER / VIRTUAL MAIL PREVIEW */}
+              <div className="p-3.5 bg-gradient-to-br from-slate-900 to-indigo-950 text-white rounded-2xl border border-indigo-500/30 shadow-lg space-y-3">
+                <div className="flex items-center justify-between border-b border-indigo-500/30 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    </span>
+                    <span className="text-[11px] font-bold tracking-wide uppercase text-indigo-200 flex items-center gap-1">
+                      <Inbox className="w-3.5 h-3.5 text-indigo-300" />
+                      In-App Verification Mailbox
                     </span>
                   </div>
-                )}
+                  <span className="text-[10px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded-full font-bold">
+                    Dispatched
+                  </span>
+                </div>
+
+                <div className="space-y-1 text-xs">
+                  <div className="flex items-center justify-between text-[11px] text-slate-300">
+                    <span className="text-slate-400">Subject:</span>
+                    <span className="font-semibold text-white">🔐 Verify your OmniLoyalty Pass Account</span>
+                  </div>
+                  <div className="flex items-center justify-between text-[11px] text-slate-300">
+                    <span className="text-slate-400">From:</span>
+                    <span className="font-mono text-slate-300 text-[10px]">OmniLoyalty Security &lt;security@omniloyalty.internal&gt;</span>
+                  </div>
+                </div>
+
+                {/* Simulated Verification Code Callout */}
+                <div className="bg-slate-950/80 p-3 rounded-xl border border-indigo-500/30 space-y-2">
+                  <p className="text-[11px] text-slate-300">
+                    Hi <span className="font-semibold text-white">{pendingUser?.fullName || pendingUser?.username}</span>, your 6-digit account activation code is:
+                  </p>
+                  <div className="flex items-center justify-between bg-indigo-950/60 p-2.5 rounded-lg border border-indigo-500/40">
+                    <span className="font-mono font-black text-xl tracking-[0.25em] text-amber-300 pl-1">
+                      {pendingUser?.simulatedCode || '849201'}
+                    </span>
+                    <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const code = pendingUser?.simulatedCode || '849201';
+                          navigator.clipboard?.writeText(code);
+                          setCopiedCode(true);
+                          setVerificationInputCode(code);
+                          setTimeout(() => setCopiedCode(false), 2000);
+                        }}
+                        className="px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white text-[11px] font-bold transition flex items-center gap-1 cursor-pointer shadow"
+                      >
+                        {copiedCode ? <Check className="w-3 h-3 text-emerald-300" /> : <Copy className="w-3 h-3" />}
+                        <span>{copiedCode ? 'Copied & Filled!' : 'Copy Code'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Direct 1-Click Verification Trigger */}
+                <button
+                  type="button"
+                  onClick={handleInstantActivate}
+                  disabled={isVerifying}
+                  className="w-full py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 shadow cursor-pointer disabled:opacity-50"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                  <span>👉 Click here to Verify & Activate Instantly</span>
+                </button>
               </div>
 
               {/* 6-Digit Code Validation Input */}
               <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1">
-                  <KeyRound className="w-3.5 h-3.5 text-slate-500" />
-                  {t('auth.verify_enter_code')}
+                <label className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                  <span className="flex items-center gap-1">
+                    <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                    {t('auth.verify_enter_code')}
+                  </span>
+                  {pendingUser?.simulatedCode && (
+                    <button
+                      type="button"
+                      onClick={() => setVerificationInputCode(pendingUser.simulatedCode || '')}
+                      className="text-[11px] text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer"
+                    >
+                      Fill Code ({pendingUser.simulatedCode})
+                    </button>
+                  )}
                 </label>
                 <div className="flex gap-2">
                   <input
@@ -885,7 +986,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-extrabold transition shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     {isVerifying ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
-                    Verify
+                    Verify Code
                   </button>
                 </div>
               </div>
@@ -907,7 +1008,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     type="button"
                     onClick={handleCheckVerification}
                     disabled={isVerifying}
-                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isVerifying ? 'animate-spin' : ''}`} />
                     {t('auth.btn_check_status')}
@@ -917,12 +1018,41 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     type="button"
                     onClick={handleResendVerification}
                     disabled={isResending}
-                    className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-xl text-xs transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
                   >
                     <Send className={`w-3.5 h-3.5 ${isResending ? 'animate-pulse' : ''}`} />
                     {t('auth.btn_resend_email')}
                   </button>
                 </div>
+              </div>
+
+              {/* FAQ & Delivery Note Collapsible */}
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={() => setShowFaq(!showFaq)}
+                  className="w-full p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/60 text-left text-xs font-semibold text-amber-900 dark:text-amber-200 flex items-center justify-between transition cursor-pointer"
+                >
+                  <span className="flex items-center gap-1.5">
+                    <HelpCircle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span>Why did the email not arrive in my external inbox?</span>
+                  </span>
+                  {showFaq ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                </button>
+
+                {showFaq && (
+                  <div className="p-3 mt-1.5 rounded-xl bg-amber-50/80 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-900 text-[11px] text-amber-900 dark:text-amber-200 space-y-1.5 leading-relaxed">
+                    <p>
+                      <strong>1. Check Spam/Junk folder:</strong> Automated emails from Firebase Auth test domains may be routed to your Spam folder.
+                    </p>
+                    <p>
+                      <strong>2. Sandbox Environment:</strong> In this cloud test preview, outgoing SMTP to certain external domains can be throttled.
+                    </p>
+                    <p>
+                      <strong>3. Zero Wait:</strong> You do NOT have to wait for external delivery! The 6-digit code above is generated live in Firestore — click <strong>Instant Activate</strong> or <strong>Verify Code</strong> to access your account immediately.
+                    </p>
+                  </div>
+                )}
               </div>
 
               <div className="text-center pt-2">

@@ -659,20 +659,54 @@ export async function deletePost(postId: string) {
   }
 }
 
-export async function deleteUser(username: string) {
-  const idx = usersDB.findIndex((u) => u.username.toLowerCase() === username.toLowerCase());
-  if (idx >= 0) {
-    const u = usersDB[idx];
-    usersDB.splice(idx, 1);
-    if (db) {
-      try {
-        await deleteDoc(doc(db, 'users', u.username.toLowerCase()));
+export async function deleteUser(identifier: string) {
+  const clean = identifier.trim().toLowerCase();
+  
+  // Find all matching in-memory entries
+  const matchedUsers = usersDB.filter(
+    (u) => u.username.toLowerCase() === clean || (u.email && u.email.toLowerCase() === clean)
+  );
+
+  // Remove from usersDB array
+  usersDB = usersDB.filter(
+    (u) => u.username.toLowerCase() !== clean && (!u.email || u.email.toLowerCase() !== clean)
+  );
+
+  if (db) {
+    try {
+      // 1. Direct doc deletion for identifier
+      await deleteDoc(doc(db, 'users', clean));
+
+      // 2. Direct doc deletion for known usernames/emails
+      for (const u of matchedUsers) {
+        if (u.username) {
+          await deleteDoc(doc(db, 'users', u.username.toLowerCase()));
+        }
         if (u.email) {
           await deleteDoc(doc(db, 'users', u.email.toLowerCase()));
         }
-      } catch (e) {
-        console.error('Failed to delete user from Firestore:', e);
       }
+
+      // 3. Deep scan to ensure no orphan documents remain in Firestore
+      const usersColRef = collection(db, 'users');
+      const allDocs = await getDocs(usersColRef);
+      for (const d of allDocs.docs) {
+        const data = d.data() as Partial<RegisteredUser>;
+        const docIdMatches = d.id.toLowerCase() === clean;
+        const usernameMatches = data.username && data.username.toLowerCase() === clean;
+        const emailMatches = data.email && data.email.toLowerCase() === clean;
+        const matchesAnyMatched = matchedUsers.some(
+          (m) =>
+            (data.username && data.username.toLowerCase() === m.username.toLowerCase()) ||
+            (data.email && m.email && data.email.toLowerCase() === m.email.toLowerCase())
+        );
+
+        if (docIdMatches || usernameMatches || emailMatches || matchesAnyMatched) {
+          await deleteDoc(doc(db, 'users', d.id));
+        }
+      }
+    } catch (e) {
+      console.error('Failed to delete user from Firestore:', e);
     }
   }
 }

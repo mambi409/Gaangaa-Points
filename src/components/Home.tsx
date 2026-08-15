@@ -36,10 +36,27 @@ export const Home: React.FC<HomeProps> = ({
 
   return (
     <div className="space-y-12 pb-12">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-950 text-white p-8 sm:p-12 md:p-16 shadow-2xl border border-slate-800">
-        <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+      {/* Hero Header Section */}
+      <section className="relative overflow-hidden rounded-3xl text-white p-8 sm:p-12 md:p-16 shadow-2xl border border-slate-800 bg-slate-950">
+        {/* Background Image with Current Color Overlay */}
+        <div className="absolute inset-0 z-0 pointer-events-none">
+          <img
+            src="https://images.unsplash.com/photo-1589553416260-f586c8f1514f?auto=format&fit=crop&w=2000&q=80"
+            alt="Willemstad Handelskade Curaçao waterfront"
+            className="w-full h-full object-cover object-center transform scale-105"
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              (e.currentTarget as HTMLImageElement).src =
+                'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Handelskade_Willemstad_Curacao.jpg/1920px-Handelskade_Willemstad_Curacao.jpg';
+            }}
+          />
+          {/* Current color gradient overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-950/90 via-blue-950/85 to-indigo-950/90 backdrop-blur-[1px]" />
+          
+          {/* Ambient Lighting Accents */}
+          <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 -mb-12 -ml-12 w-96 h-96 bg-indigo-500/20 rounded-full blur-3xl" />
+        </div>
 
         <div className="relative z-10 max-w-3xl space-y-6">
           <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold tracking-wide">

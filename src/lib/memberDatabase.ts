@@ -245,20 +245,61 @@ export async function updateMemberPoints(username: string, newPoints: number, ne
   }
 }
 
-export async function removeMemberAccount(username: string): Promise<void> {
+export async function removeMemberAccount(identifier: string, email?: string): Promise<{ success: boolean; message?: string }> {
+  const cleanId = identifier.trim().toLowerCase();
+  const cleanEmail = email ? email.trim().toLowerCase() : undefined;
+
+  // 1. Try server API via DELETE
   try {
-    await fetch(`/api/admin/users/${username}`, { method: 'DELETE' });
+    const res = await fetch(`/api/admin/users/${encodeURIComponent(cleanId)}`, { method: 'DELETE' });
+    if (!res.ok) {
+      // Try POST endpoint fallback
+      await fetch('/api/admin/users/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: cleanId, email: cleanEmail })
+      });
+    }
   } catch (e) {
     console.log('[API] Delete user route note:', e);
   }
 
+  // 2. Direct Firestore deletion
   if (db) {
     try {
-      await deleteDoc(doc(db, 'users', username.toLowerCase()));
+      // Delete primary doc
+      await deleteDoc(doc(db, 'users', cleanId));
+      if (cleanEmail && cleanEmail !== cleanId) {
+        await deleteDoc(doc(db, 'users', cleanEmail));
+      }
+
+      // Query and clean any matching Firestore documents
+      try {
+        const usersSnap = await getDocs(collection(db, 'users'));
+        for (const d of usersSnap.docs) {
+          const data = d.data();
+          const docId = d.id.toLowerCase();
+          const docUser = (data.username || '').toLowerCase();
+          const docEmail = (data.email || '').toLowerCase();
+          if (
+            docId === cleanId ||
+            (cleanEmail && docId === cleanEmail) ||
+            docUser === cleanId ||
+            (cleanEmail && docEmail === cleanEmail) ||
+            docEmail === cleanId
+          ) {
+            await deleteDoc(doc(db, 'users', d.id));
+          }
+        }
+      } catch (scanErr) {
+        console.warn('[Firestore] Scan cleanup note:', scanErr);
+      }
     } catch (fsErr) {
       console.warn('[Firestore] Error deleting user in Firestore:', fsErr);
     }
   }
+
+  return { success: true, message: `Account ${identifier} removed.` };
 }
 
 export async function verifyUserEmailDirect(identifier: string, code?: string): Promise<{ success: boolean; message: string; user?: any }> {

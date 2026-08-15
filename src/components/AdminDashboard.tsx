@@ -144,6 +144,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [adjustNote, setAdjustNote] = useState<string>('Manual loyalty balance adjustment');
   const [isAdjusting, setIsAdjusting] = useState(false);
 
+  // User Deletion State (In-App Custom Confirmation)
+  const [userToDelete, setUserToDelete] = useState<AdminUserItem | null>(null);
+  const [isDeletingUser, setIsDeletingUser] = useState(false);
+
   // ================= POSTS MANAGEMENT STATE =================
   const [postSearchQuery, setPostSearchQuery] = useState('');
   const [postCategoryFilter, setPostCategoryFilter] = useState<string>('all');
@@ -392,24 +396,36 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const handleDeleteUser = async (username: string) => {
-    if (username.toLowerCase() === 'mambiadmin') {
+  const promptDeleteUser = (user: AdminUserItem) => {
+    if (user.username.toLowerCase() === 'mambiadmin') {
       showToast('Cannot delete root administrator account', 'error');
       return;
     }
-    if (!window.confirm(`Are you sure you want to delete user @${username}? This action is irreversible.`)) {
-      return;
-    }
+    setUserToDelete(user);
+  };
+
+  const confirmDeleteUser = async () => {
+    if (!userToDelete) return;
+    setIsDeletingUser(true);
     try {
-      await removeMemberAccount(username);
-      setRegisteredUsers((prev) => prev.filter((u) => u.username.toLowerCase() !== username.toLowerCase()));
-      showToast(`User @${username} deleted from database`, 'info');
-      if (selectedUserForDetails?.username === username) {
+      await removeMemberAccount(userToDelete.username, userToDelete.email);
+      setRegisteredUsers((prev) =>
+        prev.filter(
+          (u) =>
+            u.username.toLowerCase() !== userToDelete.username.toLowerCase() &&
+            (!u.email || !userToDelete.email || u.email.toLowerCase() !== userToDelete.email.toLowerCase())
+        )
+      );
+      showToast(`User @${userToDelete.username} deleted permanently from database`, 'info');
+      if (selectedUserForDetails?.username.toLowerCase() === userToDelete.username.toLowerCase()) {
         setSelectedUserForDetails(null);
       }
+      setUserToDelete(null);
       fetchAdminData();
     } catch (err) {
-      showToast('Error deleting user', 'error');
+      showToast('Error deleting user account from database', 'error');
+    } finally {
+      setIsDeletingUser(false);
     }
   };
 
@@ -1723,8 +1739,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                 {/* Delete User */}
                                 {user.username.toLowerCase() !== 'mambiadmin' && (
                                   <button
-                                    onClick={() => handleDeleteUser(user.username)}
-                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
+                                    onClick={() => promptDeleteUser(user)}
+                                    className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition cursor-pointer"
                                     title="Delete Member Account"
                                   >
                                     <Trash2 className="w-4 h-4" />
@@ -1874,8 +1890,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                         {user.username.toLowerCase() !== 'mambiadmin' && (
                           <button
-                            onClick={() => handleDeleteUser(user.username)}
-                            className="p-1 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
+                            onClick={() => promptDeleteUser(user)}
+                            className="p-1 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition cursor-pointer"
                             title="Delete Account"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
@@ -2001,13 +2017,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     setSelectedUserForEdit(selectedUserForDetails);
                     setSelectedUserForDetails(null);
                   }}
-                  className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition"
+                  className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition cursor-pointer"
                 >
                   Edit Profile
                 </button>
+                {selectedUserForDetails.username.toLowerCase() !== 'mambiadmin' && (
+                  <button
+                    onClick={() => {
+                      promptDeleteUser(selectedUserForDetails);
+                    }}
+                    className="px-3.5 py-2.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                    title="Delete Account"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete</span>
+                  </button>
+                )}
                 <button
                   onClick={() => setSelectedUserForDetails(null)}
-                  className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                  className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
                 >
                   Close
                 </button>
@@ -2683,6 +2711,93 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ============================================================ */}
+      {/* MODAL 8: CONFIRM ACCOUNT DELETION MODAL                      */}
+      {/* ============================================================ */}
+      <AnimatePresence>
+        {userToDelete && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="w-full max-w-md rounded-2xl bg-slate-900 border border-rose-500/30 shadow-2xl p-6 space-y-5 text-slate-100 relative"
+            >
+              <div className="flex items-start gap-4">
+                <div className="w-12 h-12 rounded-xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 shrink-0">
+                  <AlertTriangle className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-white">Delete Member Account?</h3>
+                  <p className="text-xs text-slate-400 mt-0.5">
+                    This action will permanently delete the account from Firebase Firestore and the system database.
+                  </p>
+                </div>
+              </div>
+
+              {/* Target User Info Summary */}
+              <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 space-y-2.5 text-xs">
+                <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
+                  <span className="text-slate-400 font-medium">User:</span>
+                  <div className="text-right">
+                    <span className="font-bold text-white">{userToDelete.fullName}</span>
+                    <span className="text-slate-400 font-mono ml-1.5">(@{userToDelete.username})</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Email:</span>
+                  <span className="text-slate-200 font-medium">{userToDelete.email}</span>
+                </div>
+
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Pass ID / Role:</span>
+                  <span className="font-mono text-indigo-300 font-semibold">{userToDelete.passId} ({userToDelete.role})</span>
+                </div>
+
+                <div className="flex items-center justify-between text-slate-400">
+                  <span>Points Balance:</span>
+                  <span className="font-bold text-amber-300">{(userToDelete.pointsBalance ?? 0).toLocaleString()} pts ({userToDelete.currentTier || 'Bronze'})</span>
+                </div>
+              </div>
+
+              <div className="p-3 rounded-xl bg-rose-950/30 border border-rose-500/20 text-[11px] text-rose-300 leading-relaxed">
+                ⚠️ <strong>Warning:</strong> Deleting this account cannot be undone. All reward vouchers, transaction records, and pass credentials will be cleared.
+              </div>
+
+              <div className="flex items-center gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={confirmDeleteUser}
+                  disabled={isDeletingUser}
+                  className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold transition flex items-center justify-center gap-2 shadow-lg shadow-rose-600/20 cursor-pointer disabled:opacity-50"
+                >
+                  {isDeletingUser ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>Deleting Account...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Yes, Delete Account</span>
+                    </>
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setUserToDelete(null)}
+                  disabled={isDeletingUser}
+                  className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

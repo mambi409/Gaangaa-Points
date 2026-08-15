@@ -145,6 +145,11 @@ app.post('/api/auth/login', async (req, res) => {
           pendingVerification: true,
           email: foundUser.email,
           username: foundUser.username,
+          fullName: foundUser.fullName,
+          simulatedCode: foundUser.verificationCode,
+          passId: foundUser.passId,
+          pinCode: foundUser.pinCode,
+          role: foundUser.role,
           error: 'Your account is pending email verification. Please verify your email to activate your account.'
         });
       }
@@ -1749,10 +1754,11 @@ app.put('/api/admin/users/update', async (req, res) => {
   }
 });
 
-// API ROUTE: Delete User Account
+// API ROUTE: Delete User Account (DELETE by param)
 app.delete('/api/admin/users/:username', async (req, res) => {
   try {
-    const { username } = req.params;
+    const rawParam = req.params.username;
+    const username = decodeURIComponent(rawParam).trim();
     if (username.toLowerCase() === 'mambiadmin') {
       return res.status(403).json({ error: 'Root administrator account cannot be deleted.' });
     }
@@ -1771,6 +1777,40 @@ app.delete('/api/admin/users/:username', async (req, res) => {
     await persistAuditLog(log);
 
     res.json({ success: true, message: `User @${username} deleted successfully.` });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to delete user' });
+  }
+});
+
+// API ROUTE: Delete User Account (POST JSON payload alternative)
+app.post('/api/admin/users/delete', async (req, res) => {
+  try {
+    const { username, email } = req.body;
+    const target = (username || email || '').trim();
+    if (!target) {
+      return res.status(400).json({ error: 'User identifier (username or email) is required.' });
+    }
+    if (target.toLowerCase() === 'mambiadmin') {
+      return res.status(403).json({ error: 'Root administrator account cannot be deleted.' });
+    }
+
+    await deleteUser(target);
+    if (email && email !== target) {
+      await deleteUser(email);
+    }
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `User Account Deleted: @${target}`,
+      type: 'security',
+      severity: 'warning',
+      details: `Admin deleted user account ${target} (${email || 'no email'}).`,
+      user: 'mambiadmin'
+    };
+    await persistAuditLog(log);
+
+    res.json({ success: true, message: `User ${target} deleted successfully.` });
   } catch (err) {
     res.status(500).json({ error: 'Failed to delete user' });
   }
