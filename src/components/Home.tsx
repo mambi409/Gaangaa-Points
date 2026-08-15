@@ -39,19 +39,23 @@ export const Home: React.FC<HomeProps> = ({
       {/* Hero Header Section */}
       <section className="relative overflow-hidden rounded-3xl text-white p-8 sm:p-12 md:p-16 shadow-2xl border border-slate-800 bg-slate-950">
         {/* Background Image with Current Color Overlay */}
-        <div className="absolute inset-0 z-0 pointer-events-none">
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
           <img
-            src="https://images.unsplash.com/photo-1589553416260-f586c8f1514f?auto=format&fit=crop&w=2000&q=80"
+            src="https://cdn.pixabay.com/photo/2020/02/10/16/25/curacao-4939558_1280.jpg"
             alt="Willemstad Handelskade Curaçao waterfront"
             className="w-full h-full object-cover object-center transform scale-105"
             referrerPolicy="no-referrer"
             onError={(e) => {
-              (e.currentTarget as HTMLImageElement).src =
-                'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Handelskade_Willemstad_Curacao.jpg/1920px-Handelskade_Willemstad_Curacao.jpg';
+              const target = e.currentTarget as HTMLImageElement;
+              if (target.src.includes('cdn.pixabay.com')) {
+                target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/d3/Handelskade_Willemstad_Curacao.jpg/1920px-Handelskade_Willemstad_Curacao.jpg';
+              } else if (target.src.includes('Handelskade_Willemstad_Curacao')) {
+                target.src = 'https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Handelskade_in_Willemstad%2C_Curacao.jpg/1920px-Handelskade_in_Willemstad%2C_Curacao.jpg';
+              }
             }}
           />
           {/* Current color gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-br from-slate-950/90 via-blue-950/85 to-indigo-950/90 backdrop-blur-[1px]" />
+          <div className="absolute inset-0 bg-gradient-to-br from-slate-950/75 via-blue-950/65 to-indigo-950/75 backdrop-blur-[0.5px]" />
           
           {/* Ambient Lighting Accents */}
           <div className="absolute top-0 right-0 -mt-12 -mr-12 w-96 h-96 bg-blue-500/20 rounded-full blur-3xl" />
