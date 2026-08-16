@@ -1782,11 +1782,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                         <img
                           src={post.imageUrl || '/gobiernu_2x.png'}
                           alt={post.title}
-                          className="w-full h-full object-contain max-h-36 transition-transform duration-300 group-hover:scale-105"
+                          className="w-auto h-auto max-h-24 max-w-[65%] object-contain m-auto my-3 transition-transform duration-300 group-hover:scale-105"
                           referrerPolicy="no-referrer"
                           onError={(e) => {
                             (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                            (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain max-h-36';
+                            (e.currentTarget as HTMLImageElement).className = 'w-auto h-auto max-h-24 max-w-[65%] object-contain m-auto my-3';
                           }}
                         />
                         <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
