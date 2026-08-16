@@ -219,7 +219,7 @@ export interface AdminPost {
   title: string;
   content: string;
   excerpt?: string;
-  category: 'Announcement' | 'Promotion' | 'Update' | 'Reward Alert' | 'Community';
+  category: 'Announcement' | 'Promotion' | 'Update' | 'Reward Alert' | 'Community' | 'Government news' | string;
   subCategory?: string;
   sourceType?: string;
   imageUrl?: string;

@@ -56,7 +56,8 @@ import {
   Megaphone,
   Newspaper,
   Rss,
-  Bell
+  Bell,
+  Landmark
 } from 'lucide-react';
 import {
   AdminTask,
@@ -844,16 +845,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
-  // Filtered External Government News List
+  // Filtered External Government News List (Unified under Government news)
   const filteredExternalGovPosts = externalGovPosts.filter((p) => {
     const q = postSearchQuery.toLowerCase();
     const matchesSearch =
       !q ||
       p.title.toLowerCase().includes(q) ||
       p.content.toLowerCase().includes(q) ||
-      (p.subCategory && p.subCategory.toLowerCase().includes(q));
-    const matchesSub = govSubcategoryFilter === 'all' || (p.subCategory || 'Notisia') === govSubcategoryFilter;
-    return matchesSearch && matchesSub;
+      (p.subCategory && p.subCategory.toLowerCase().includes(q)) ||
+      (p.category && p.category.toLowerCase().includes(q));
+    return matchesSearch;
   });
 
   // Generic fallback filtered posts
@@ -1682,7 +1683,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     </span>
                   </div>
                   <p className="text-xs text-slate-300 mt-1">
-                    Multi-subcategory crawler actively updates every 30 minutes. Strictly stored in Firebase Firestore (max 10 items) and published with <span className="text-blue-300 font-mono font-semibold">"NEWS PUSH"</span> (same-day news only).
+                    All subcategories from Gobiernu.cw are aggregated and consolidated into the top 10 latest articles under <span className="text-blue-300 font-mono font-semibold">"Government news"</span> in Firebase Firestore with <span className="text-blue-300 font-mono font-semibold">"NEWS PUSH"</span> notifications for same-day releases.
                   </p>
                 </div>
 
@@ -1693,7 +1694,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition cursor-pointer"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${isScanningAllGobiernu ? 'animate-spin' : ''}`} />
-                    <span>{isScanningAllGobiernu ? 'Scanning Subcategories...' : 'Scan All Subcategories Now'}</span>
+                    <span>{isScanningAllGobiernu ? 'Syncing Top 10...' : 'Sync Top 10 Now'}</span>
                   </button>
 
                   <button
@@ -1710,14 +1711,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               {/* Status Chips */}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80 text-xs">
                 <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
-                  <span className="text-slate-400 text-[11px]">Storage Limit</span>
-                  <span className="font-bold text-white font-mono">10 Articles Max</span>
+                  <span className="text-slate-400 text-[11px]">Category</span>
+                  <span className="font-bold text-white font-mono">Government news</span>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
                   <span className="text-slate-400 text-[11px]">Firestore Cloud</span>
                   <span className="font-bold text-emerald-400 flex items-center gap-1">
                     <Database className="w-3 h-3" />
-                    Synced
+                    10 Synced
                   </span>
                 </div>
                 <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
@@ -1739,29 +1740,15 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {/* Subcategory Filter Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-              {[
-                { id: 'all', label: 'All Subcategories' },
-                { id: 'Notisia General', label: 'Notisia General' },
-                { id: 'Notisia di Ministernan', label: 'Ministernan' },
-                { id: 'Notisia di Konseho di Minister', label: 'Konseho di Minister' },
-                { id: 'Breaking News', label: 'Breaking News' },
-                { id: 'Óptima Forma', label: 'Óptima Forma' },
-                { id: 'Publikashonnan', label: 'Publikashonnan' }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setGovSubcategoryFilter(tab.id)}
-                  className={`px-3 py-1.5 rounded-lg whitespace-nowrap font-medium transition cursor-pointer ${
-                    govSubcategoryFilter === tab.id
-                      ? 'bg-blue-600 text-white font-bold'
-                      : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800'
-                  }`}
-                >
-                  {tab.label}
-                </button>
-              ))}
+            {/* Consolidated Category Indicator */}
+            <div className="flex items-center justify-between pb-1 text-xs">
+              <div className="flex items-center gap-2">
+                <span className="px-3 py-1.5 rounded-lg bg-blue-600 text-white font-bold flex items-center gap-1.5 shadow-sm">
+                  <Landmark className="w-3.5 h-3.5" />
+                  <span>Category: Government news</span>
+                </span>
+                <span className="text-slate-400 text-xs">Showing latest {filteredExternalGovPosts.length} aggregated articles</span>
+              </div>
             </div>
 
             {/* External News Grid (Strictly 10 Latest) */}

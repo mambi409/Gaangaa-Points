@@ -88,74 +88,27 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
 
   // Helper to fetch directly from Gobiernu endpoints on client-side if API fails or for Vercel direct execution
   const fetchGobiernuDirectClient = async (): Promise<AdminPost[]> => {
-    const eps = [
-      { key: 'nieuw', name: 'Notisia General', category: 'Announcement', subCategory: 'Notisia General / News' },
-      { key: 'ministers_nieuw', name: 'Notisia di Ministernan', category: 'Announcement', subCategory: 'Notisia di Ministernan' },
-      { key: 'konseho_niews', name: 'Notisia di Konseho', category: 'Announcement', subCategory: 'Notisia di Konseho' },
-      { key: 'breaking-news', name: 'Breaking News', category: 'Announcement', subCategory: 'Breaking News' },
-      { key: 'optima_forma', name: 'Óptima Forma', category: 'Announcement', subCategory: 'Óptima Forma' },
-      { key: 'landscourant', name: 'Landscourant', category: 'Announcement', subCategory: 'Landscourant Ofisial' },
-      { key: 'posts', name: 'Publikashonnan', category: 'Announcement', subCategory: 'Publikashon' }
+    const endpoints = [
+      'nieuw',
+      'ministers_nieuw',
+      'konseho_niews',
+      'breaking-news',
+      'optima_forma',
+      'landscourant',
+      'posts'
     ];
 
-    const aggregated: AdminPost[] = [];
+    const rawCollected: any[] = [];
     await Promise.allSettled(
-      eps.map(async (ep) => {
+      endpoints.map(async (key) => {
         try {
-          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${ep.key}?per_page=10&_embed`);
+          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${key}?per_page=12&_embed`);
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data)) {
               for (const item of data) {
                 if (item && item.id && item.title?.rendered) {
-                  const title = (item.title.rendered || '')
-                    .replace(/&#8211;/g, '–')
-                    .replace(/&#8217;/g, "'")
-                    .replace(/&#8220;/g, '"')
-                    .replace(/&#8221;/g, '"')
-                    .replace(/&amp;/g, '&')
-                    .replace(/<[^>]+>/g, ' ')
-                    .trim();
-
-                  const content = (item.content?.rendered || item.excerpt?.rendered || '')
-                    .replace(/<[^>]+>/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-
-                  const excerpt = (item.excerpt?.rendered || content.slice(0, 180) + '...')
-                    .replace(/<[^>]+>/g, ' ')
-                    .replace(/\s+/g, ' ')
-                    .trim();
-
-                  const media =
-                    item._embedded?.['wp:featuredmedia']?.[0]?.source_url ||
-                    'https://gobiernu.cw/wp-content/uploads/2019/04/gobiernu_2x.png';
-
-                  const postObj: AdminPost = {
-                    id: `gobiernu-${item.id}`,
-                    externalId: item.id,
-                    title,
-                    content: content || excerpt,
-                    excerpt,
-                    category: 'Announcement',
-                    subCategory: ep.subCategory,
-                    sourceType: ep.key,
-                    imageUrl: media,
-                    author: 'Gobiernu di Kòrsou',
-                    targetAudience: 'all',
-                    status: 'published',
-                    createdAt: item.date ? new Date(item.date).toISOString() : new Date().toISOString(),
-                    likesCount: 0,
-                    featured: false,
-                    sourceUrl: item.link || 'https://gobiernu.cw'
-                  };
-
-                  aggregated.push(postObj);
-
-                  // Persist to Firestore directly from client if db is available
-                  if (db) {
-                    setDoc(doc(db, 'posts', postObj.id), postObj).catch(() => {});
-                  }
+                  rawCollected.push(item);
                 }
               }
             }
@@ -165,6 +118,91 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         }
       })
     );
+
+    // Deduplicate by ID, title, and link
+    const seenExtIds = new Set<string | number>();
+    const seenTitles = new Set<string>();
+    const uniqueRaw: any[] = [];
+
+    for (const item of rawCollected) {
+      const cleanTitle = (item.title?.rendered || '')
+        .replace(/&#8211;/g, '–')
+        .replace(/&#8217;/g, "'")
+        .replace(/&#8220;/g, '"')
+        .replace(/&#8221;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/<[^>]+>/g, ' ')
+        .trim();
+
+      const normTitle = cleanTitle.toLowerCase().replace(/[^a-z0-9]/g, '');
+      if (item.id && seenExtIds.has(item.id)) continue;
+      if (normTitle && normTitle.length > 6 && seenTitles.has(normTitle)) continue;
+
+      if (item.id) seenExtIds.add(item.id);
+      if (normTitle && normTitle.length > 6) seenTitles.add(normTitle);
+      uniqueRaw.push(item);
+    }
+
+    // Sort descending by date
+    uniqueRaw.sort((a, b) => {
+      const dateA = new Date(a.date || a.modified || 0).getTime();
+      const dateB = new Date(b.date || b.modified || 0).getTime();
+      return dateB - dateA;
+    });
+
+    // Take strictly the top 10 latest items across all subcategories
+    const top10 = uniqueRaw.slice(0, 10);
+
+    const aggregated: AdminPost[] = top10.map((item, idx) => {
+      const title = (item.title?.rendered || '')
+        .replace(/&#8211;/g, '–')
+        .replace(/&#8217;/g, "'")
+        .replace(/&#8220;/g, '"')
+        .replace(/&#8221;/g, '"')
+        .replace(/&amp;/g, '&')
+        .replace(/<[^>]+>/g, ' ')
+        .trim();
+
+      const content = (item.content?.rendered || item.excerpt?.rendered || '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const excerpt = (item.excerpt?.rendered || content.slice(0, 180) + '...')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const media =
+        item._embedded?.['wp:featuredmedia']?.[0]?.source_url ||
+        'https://gobiernu.cw/wp-content/uploads/2019/04/gobiernu_2x.png';
+
+      const postObj: AdminPost = {
+        id: `gobiernu-${item.id}`,
+        externalId: item.id,
+        title: title || 'Notisia di Gobiernu di Kòrsou',
+        content: content || excerpt,
+        excerpt,
+        category: 'Announcement',
+        subCategory: 'Government news',
+        sourceType: 'Government news',
+        imageUrl: media,
+        author: 'Gobiernu di Kòrsou',
+        targetAudience: 'all',
+        status: 'published',
+        createdAt: item.date ? new Date(item.date).toISOString() : new Date().toISOString(),
+        likesCount: 0,
+        featured: idx === 0,
+        sourceUrl: item.link || 'https://gobiernu.cw'
+      };
+
+      // Persist to Firestore directly from client if db is available
+      if (db) {
+        setDoc(doc(db, 'posts', postObj.id), postObj).catch(() => {});
+      }
+
+      return postObj;
+    });
 
     return aggregated;
   };
@@ -215,7 +253,14 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       try {
         const directPosts = await fetchGobiernuDirectClient();
         if (directPosts.length > 0) {
-          loadedPosts = [...loadedPosts, ...directPosts];
+          const nonGovPosts = loadedPosts.filter(
+            (p) =>
+              !p.id?.startsWith('gobiernu-') &&
+              p.author !== 'Gobiernu di Kòrsou' &&
+              !p.author?.toLowerCase().includes('gobiernu') &&
+              !p.sourceUrl?.includes('gobiernu.cw')
+          );
+          loadedPosts = [...directPosts, ...nonGovPosts];
         }
       } catch (directErr) {
         console.warn('[NewsView] Direct client sync notice:', directErr);
@@ -230,8 +275,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       if (forceSync) {
         setSyncStatus(
           language === 'es'
-            ? `¡Todas las subcategorías sincronizadas! ${uniquePosts.length} publicaciones disponibles en Firebase`
-            : `All feed categories synced! ${uniquePosts.length} posts saved in Firebase`
+            ? `¡Noticias del Gobierno sincronizadas! Las 10 últimas noticias guardadas en Firebase.`
+            : `Government news synced! Top 10 latest articles saved in Firebase.`
         );
       }
     }
@@ -244,73 +289,26 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
     loadPosts();
   }, []);
 
-  // Determine subcategory display icon and label
+  // Determine category display icon and label
   const getCategoryMeta = (post: AdminPost) => {
     const isGov =
+      post.category === 'Government news' ||
+      post.subCategory === 'Government news' ||
       post.id?.startsWith('gobiernu-') ||
       post.author?.toLowerCase().includes('gobiernu') ||
       post.sourceUrl?.includes('gobiernu.cw');
 
-    const sub = post.subCategory || (post.sourceType ? `Notisia (${post.sourceType})` : post.category);
-
-    if (sub.includes('Minister') || post.sourceType === 'ministers_nieuw') {
+    if (isGov) {
       return {
-        label: 'Notisia di Ministernan',
+        label: 'Government news',
         icon: Landmark,
         color: 'bg-blue-600 text-white',
         border: 'border-blue-500/30'
       };
     }
-    if (sub.includes('Konseho') || post.sourceType === 'konseho_niews') {
-      return {
-        label: 'Notisia di Konseho',
-        icon: Scale,
-        color: 'bg-amber-600 text-white',
-        border: 'border-amber-500/30'
-      };
-    }
-    if (sub.includes('Breaking') || post.sourceType === 'breaking-news') {
-      return {
-        label: 'Breaking News',
-        icon: Megaphone,
-        color: 'bg-red-600 text-white',
-        border: 'border-red-500/30'
-      };
-    }
-    if (sub.includes('Landscourant') || post.sourceType === 'landscourant' || post.sourceType === 'laws') {
-      return {
-        label: 'Landscourant',
-        icon: FileText,
-        color: 'bg-slate-700 text-white',
-        border: 'border-slate-600/30'
-      };
-    }
-    if (sub.includes('Óptima') || post.sourceType === 'optima_forma') {
-      return {
-        label: 'Óptima Forma',
-        icon: Award,
-        color: 'bg-emerald-600 text-white',
-        border: 'border-emerald-500/30'
-      };
-    }
-    if (sub.includes('Publikashon') || post.sourceType === 'posts') {
-      return {
-        label: 'Publikashon',
-        icon: Newspaper,
-        color: 'bg-purple-600 text-white',
-        border: 'border-purple-500/30'
-      };
-    }
-    if (isGov || post.sourceType === 'nieuw') {
-      return {
-        label: 'Notisia General',
-        icon: Building2,
-        color: 'bg-indigo-600 text-white',
-        border: 'border-indigo-500/30'
-      };
-    }
+
     return {
-      label: post.category,
+      label: post.category || 'Promotion',
       icon: Sparkles,
       color: 'bg-teal-600 text-white',
       border: 'border-teal-500/30'
@@ -320,35 +318,16 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
   // Filter posts across all feed categories
   const filteredPosts = posts.filter((post) => {
     const isGov =
+      post.category === 'Government news' ||
+      post.subCategory === 'Government news' ||
       post.id?.startsWith('gobiernu-') ||
       post.author?.toLowerCase().includes('gobiernu') ||
       post.sourceUrl?.includes('gobiernu.cw');
 
-    if (selectedSubCategory !== 'All') {
-      if (selectedSubCategory === 'ministers_nieuw') {
-        const match = post.sourceType === 'ministers_nieuw' || post.subCategory?.includes('Minister');
-        if (!match) return false;
-      } else if (selectedSubCategory === 'konseho_niews') {
-        const match = post.sourceType === 'konseho_niews' || post.subCategory?.includes('Konseho');
-        if (!match) return false;
-      } else if (selectedSubCategory === 'general_news') {
-        const match = post.sourceType === 'nieuw' || (!post.sourceType && isGov) || post.subCategory?.includes('General');
-        if (!match) return false;
-      } else if (selectedSubCategory === 'optima_forma') {
-        const match = post.sourceType === 'optima_forma' || post.subCategory?.includes('Óptima');
-        if (!match) return false;
-      } else if (selectedSubCategory === 'breaking-news') {
-        const match = post.sourceType === 'breaking-news' || post.subCategory?.includes('Breaking');
-        if (!match) return false;
-      } else if (selectedSubCategory === 'landscourant') {
-        const match = post.sourceType === 'landscourant' || post.sourceType === 'laws' || post.subCategory?.includes('Landscourant');
-        if (!match) return false;
-      } else if (selectedSubCategory === 'publikashon') {
-        const match = post.sourceType === 'posts' || post.subCategory?.includes('Publikashon');
-        if (!match) return false;
-      } else if (selectedSubCategory === 'promotions') {
-        if (isGov) return false;
-      }
+    if (selectedSubCategory === 'Government news') {
+      if (!isGov) return false;
+    } else if (selectedSubCategory === 'promotions') {
+      if (isGov) return false;
     }
 
     if (searchQuery.trim()) {
@@ -357,8 +336,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       const contentMatch = post.content?.toLowerCase().includes(q);
       const excerptMatch = post.excerpt?.toLowerCase().includes(q);
       const authorMatch = post.author?.toLowerCase().includes(q);
-      const subMatch = post.subCategory?.toLowerCase().includes(q);
-      return titleMatch || contentMatch || excerptMatch || authorMatch || subMatch;
+      return titleMatch || contentMatch || excerptMatch || authorMatch;
     }
 
     return true;
@@ -407,8 +385,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
 
           <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
             {language === 'es'
-              ? 'Escaneo diario de todas las subcategorías de Gobiernu di Kòrsou (Notisia di Ministernan, Konseho di Minister, Notisia General, Óptima Forma y Landscourant). Si una noticia no tiene imagen, se incluye automáticamente el escudo oficial del gobierno.'
-              : 'Daily automated scan across all subcategories on gobiernu.cw (Ministerial News, Council of Ministers, General News, Óptima Forma, and Official Gazette). Articles without pictures automatically feature the official Government of Curaçao emblem.'}
+              ? 'Últimas 10 noticias oficiales consolidadas bajo "Government news", extraídas de todas las secciones de Gobiernu.cw y sincronizadas con Firebase.'
+              : 'Top 10 latest official announcements unified under "Government news", aggregated across all government news sources and synchronized with Firebase.'}
           </p>
 
           {/* Search & Actions Bar */}
@@ -421,8 +399,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={
                   language === 'es'
-                    ? 'Buscar en todas las subcategorías, decretos, ministros...'
-                    : 'Search across all subcategories, ministers, decisions...'
+                    ? 'Buscar en noticias, ministros, decretos...'
+                    : 'Search in government news, announcements...'
                 }
                 className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
               />
@@ -445,11 +423,11 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
               <span>
                 {isRefreshing
                   ? language === 'es'
-                    ? 'Escaneando Todas las Subcategorías...'
-                    : 'Scanning All Subcategories...'
+                    ? 'Sincronizando Noticias...'
+                    : 'Syncing News...'
                   : language === 'es'
-                  ? 'Escanear y Obtener Top 10'
-                  : 'Scan & Sync Top 10'}
+                  ? 'Sincronizar Top 10'
+                  : 'Sync Top 10'}
               </span>
             </button>
           </div>
@@ -463,7 +441,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         </div>
       </section>
 
-      {/* Subcategory Filter Tabs */}
+      {/* Category Filter Tabs: Consolidated Government News & Community */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
         <button
           onClick={() => setSelectedSubCategory('All')}
@@ -473,91 +451,19 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
               : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
           }`}
         >
-          {language === 'es' ? 'Todas las Categorías' : 'All Categories'} ({posts.length})
+          {language === 'es' ? 'Todas las Noticias' : 'All News'} ({posts.length})
         </button>
 
         <button
-          onClick={() => setSelectedSubCategory('ministers_nieuw')}
+          onClick={() => setSelectedSubCategory('Government news')}
           className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-            selectedSubCategory === 'ministers_nieuw'
+            selectedSubCategory === 'Government news'
               ? 'bg-blue-600 text-white shadow-sm'
               : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
           }`}
         >
           <Landmark className="w-3.5 h-3.5 text-blue-400" />
-          <span>Notisia di Ministernan</span>
-        </button>
-
-        <button
-          onClick={() => setSelectedSubCategory('konseho_niews')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-            selectedSubCategory === 'konseho_niews'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
-        >
-          <Scale className="w-3.5 h-3.5 text-amber-400" />
-          <span>Konseho di Minister</span>
-        </button>
-
-        <button
-          onClick={() => setSelectedSubCategory('general_news')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-            selectedSubCategory === 'general_news'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
-        >
-          <Building2 className="w-3.5 h-3.5 text-indigo-400" />
-          <span>Notisia General (Ministerionan)</span>
-        </button>
-
-        <button
-          onClick={() => setSelectedSubCategory('optima_forma')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-            selectedSubCategory === 'optima_forma'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
-        >
-          <Award className="w-3.5 h-3.5 text-emerald-400" />
-          <span>Óptima Forma</span>
-        </button>
-
-        <button
-          onClick={() => setSelectedSubCategory('breaking-news')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-            selectedSubCategory === 'breaking-news'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
-        >
-          <Megaphone className="w-3.5 h-3.5 text-red-400" />
-          <span>Breaking News</span>
-        </button>
-
-        <button
-          onClick={() => setSelectedSubCategory('landscourant')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-            selectedSubCategory === 'landscourant'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
-        >
-          <FileText className="w-3.5 h-3.5 text-slate-400" />
-          <span>Landscourant Ofisial</span>
-        </button>
-
-        <button
-          onClick={() => setSelectedSubCategory('publikashon')}
-          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
-            selectedSubCategory === 'publikashon'
-              ? 'bg-blue-600 text-white shadow-sm'
-              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
-          }`}
-        >
-          <Newspaper className="w-3.5 h-3.5 text-purple-400" />
-          <span>Publikashonnan</span>
+          <span>Government news (Top 10)</span>
         </button>
 
         <button
@@ -578,10 +484,10 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         <div className="py-20 text-center space-y-3 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
           <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
           <p className="text-sm font-bold text-slate-900 dark:text-white">
-            {language === 'es' ? 'Escaneando todas las subcategorías de Gobiernu.cw...' : 'Scanning all subcategories from Gobiernu.cw & Firebase...'}
+            {language === 'es' ? 'Obteniendo el Top 10 de noticias oficiales...' : 'Fetching Top 10 Government news from Gobiernu.cw & Firebase...'}
           </p>
           <p className="text-xs text-slate-400">
-            {language === 'es' ? 'Obteniendo y sincronizando todas las noticias oficiales.' : 'Aggregating and synchronizing official announcements across all feed categories.'}
+            {language === 'es' ? 'Consolidando noticias oficiales en la categoría Government news.' : 'Consolidating official announcements into Government news category.'}
           </p>
         </div>
       ) : filteredPosts.length === 0 ? (
@@ -593,15 +499,15 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
             </h3>
             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
               {language === 'es'
-                ? 'Presiona escanear para actualizar todas las subcategorías de Gobiernu.cw.'
-                : 'Press scan to fetch and synchronize the freshest news across all categories.'}
+                ? 'Presiona sincronizar para actualizar el Top 10 de noticias oficiales.'
+                : 'Press sync to fetch and synchronize the top 10 government news articles.'}
             </p>
           </div>
           <button
             onClick={() => loadPosts(true)}
             className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/25 cursor-pointer"
           >
-            {language === 'es' ? 'Escanear Todas las Subcategorías Ahora' : 'Scan All Subcategories Now'}
+            {language === 'es' ? 'Sincronizar Top 10 Ahora' : 'Sync Top 10 Now'}
           </button>
         </div>
       ) : (
