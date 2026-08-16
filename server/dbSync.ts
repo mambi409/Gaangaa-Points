@@ -442,6 +442,13 @@ export async function initFirestoreSync() {
       console.log(`[Firestore] Loaded ${postsData.length} posts from Firestore.`);
     }
 
+    // 8. Auto-Sync & Save 10 latest Gobiernu.cw news posts directly into Firestore
+    try {
+      await syncGobiernuToFirestore(10);
+    } catch (e) {
+      console.warn('[Firestore] Initial Gobiernu.cw sync notice:', e);
+    }
+
     console.log('[Firestore] ✅ All Firestore collections synchronized successfully!');
   } catch (err) {
     console.error('[Firestore] Error during Firestore initialization:', err);
@@ -741,5 +748,97 @@ export async function fetchLatestUsers(): Promise<RegisteredUser[]> {
     }
   }
   return usersDB;
+}
+
+export function cleanGobiernuHtml(htmlStr: string): string {
+  if (!htmlStr) return '';
+  return htmlStr
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .replace(/&#8216;/g, "'")
+    .replace(/&#8217;/g, "'")
+    .replace(/&#8220;/g, '"')
+    .replace(/&#8221;/g, '"')
+    .replace(/&#038;/g, '&')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> {
+  try {
+    console.log('[Firestore] Fetching 10 latest news items from Gobiernu.cw...');
+    const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/ministers_nieuw?per_page=${limit}&_embed`, {
+      headers: {
+        'User-Agent': 'OmniLoyaltyCuracao/1.0 (Government-News-Reader; contact@omniloyalty.app)'
+      },
+      signal: AbortSignal.timeout(12000)
+    });
+
+    if (!res.ok) {
+      console.warn(`[Firestore] Gobiernu.cw responded with status ${res.status}`);
+      return [];
+    }
+
+    const rawPosts = await res.json();
+    if (!Array.isArray(rawPosts)) return [];
+
+    const fetchedPosts: AdminPost[] = rawPosts.slice(0, limit).map((p: any, idx: number) => {
+      const title = cleanGobiernuHtml(p.title?.rendered || 'Notisia di Gobiernu di Kòrsou');
+      const rawContent = cleanGobiernuHtml(p.content?.rendered || p.excerpt?.rendered || '');
+      const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 180) + '...'));
+      const media =
+        p._embedded?.['wp:featuredmedia']?.[0]?.source_url ||
+        (idx % 2 === 0 ? '/curacao-handelskade.jpg' : '/curacao-handelskade-wide.jpg');
+
+      return {
+        id: `gobiernu-${p.id}`,
+        externalId: p.id,
+        title,
+        content: rawContent || excerpt,
+        excerpt,
+        category: 'Announcement',
+        imageUrl: media,
+        author: 'Gobiernu di Kòrsou',
+        targetAudience: 'all',
+        status: 'published',
+        createdAt: p.date ? new Date(p.date).toISOString() : new Date().toISOString(),
+        likesCount: 0,
+        featured: idx === 0,
+        sourceUrl: p.link || 'https://gobiernu.cw'
+      };
+    });
+
+    // Persist all 10 posts to Firestore and in-memory cache
+    for (const post of fetchedPosts) {
+      const idx = postsData.findIndex((x) => x.id === post.id || (post.externalId && x.externalId === post.externalId));
+      if (idx >= 0) {
+        postsData[idx] = { ...postsData[idx], ...post };
+      } else {
+        postsData.unshift(post);
+      }
+
+      if (db) {
+        try {
+          await setDoc(doc(db, 'posts', post.id), post);
+        } catch (dbErr) {
+          console.error(`[Firestore] Error persisting post ${post.id} to Firestore:`, dbErr);
+        }
+      }
+    }
+
+    postsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    console.log(`[Firestore] ✅ Successfully synced ${fetchedPosts.length} posts from Gobiernu.cw into Firestore database!`);
+    return fetchedPosts;
+  } catch (err) {
+    console.warn('[Firestore] Notice: Could not sync from Gobiernu.cw in this cycle:', err);
+    return [];
+  }
 }
 

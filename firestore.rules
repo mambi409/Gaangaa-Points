@@ -34,6 +34,12 @@ service cloud.firestore {
       allow read, write: if true;
     }
 
+    // Posts & Gobiernu News collection
+    match /posts/{postId} {
+      allow read: if true;
+      allow write: if true;
+    }
+
     // Admin & system collection
     match /system/{document=**} {
       allow read, write: if true;

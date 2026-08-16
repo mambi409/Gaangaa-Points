@@ -1,0 +1,573 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import {
+  Globe,
+  RefreshCw,
+  Search,
+  ExternalLink,
+  Calendar,
+  User,
+  Tag,
+  Share2,
+  X,
+  ChevronRight,
+  BookOpen,
+  Sparkles,
+  ShieldCheck,
+  Building2,
+  Radio,
+  Check
+} from 'lucide-react';
+import { AdminPost } from '../types';
+import { useLanguage } from '../context/LanguageContext';
+import { db, collection, getDocs } from '../lib/firebase';
+
+interface NewsViewProps {
+  onOpenStoreExplore?: () => void;
+}
+
+export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
+  const { t, language } = useLanguage();
+  const [posts, setPosts] = useState<AdminPost[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState<'All' | 'Gobiernu' | 'Promotion' | 'Announcement'>('All');
+  const [selectedArticle, setSelectedArticle] = useState<AdminPost | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string | null>(null);
+
+  // Fetch posts from API with automatic Firestore fallback (essential for Vercel)
+  const loadPosts = async (forceSync = false) => {
+    if (forceSync) {
+      setIsRefreshing(true);
+    } else {
+      setIsLoading(true);
+    }
+    setSyncStatus(null);
+
+    let loadedPosts: AdminPost[] = [];
+
+    // 1. Attempt API fetch
+    try {
+      const url = forceSync ? '/api/posts?refresh=true' : '/api/posts';
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && Array.isArray(data.posts) && data.posts.length > 0) {
+          loadedPosts = data.posts;
+        }
+      }
+    } catch (apiErr) {
+      console.warn('[NewsView] API fetch notice, falling back to direct Firestore:', apiErr);
+    }
+
+    // 2. Direct Firestore query fallback (guarantees Vercel reads the 10 posts stored in Firebase)
+    if (loadedPosts.length === 0 && db) {
+      try {
+        const snap = await getDocs(collection(db, 'posts'));
+        if (!snap.empty) {
+          const fsPosts: AdminPost[] = [];
+          snap.forEach((doc) => {
+            fsPosts.push(doc.data() as AdminPost);
+          });
+          loadedPosts = fsPosts;
+        }
+      } catch (fsErr) {
+        console.warn('[NewsView] Firestore direct fetch notice:', fsErr);
+      }
+    }
+
+    // Sort newest first
+    if (loadedPosts.length > 0) {
+      loadedPosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setPosts(loadedPosts);
+      if (forceSync) {
+        setSyncStatus(language === 'es' ? 'Noticias sincronizadas exitosamente con Firebase' : 'Live news synchronized successfully with Firebase');
+      }
+    }
+
+    setIsLoading(false);
+    setIsRefreshing(false);
+  };
+
+  useEffect(() => {
+    loadPosts();
+  }, []);
+
+  // Filter posts
+  const filteredPosts = posts.filter((post) => {
+    const isGobiernu = post.id?.startsWith('gobiernu-') || post.author?.toLowerCase().includes('gobiernu') || post.sourceUrl?.includes('gobiernu.cw');
+
+    if (selectedCategory === 'Gobiernu' && !isGobiernu) return false;
+    if (selectedCategory === 'Promotion' && post.category !== 'Promotion') return false;
+    if (selectedCategory === 'Announcement' && post.category !== 'Announcement' && !isGobiernu) return false;
+
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const titleMatch = post.title?.toLowerCase().includes(q);
+      const contentMatch = post.content?.toLowerCase().includes(q);
+      const excerptMatch = post.excerpt?.toLowerCase().includes(q);
+      const authorMatch = post.author?.toLowerCase().includes(q);
+      return titleMatch || contentMatch || excerptMatch || authorMatch;
+    }
+
+    return true;
+  });
+
+  const featuredPost = filteredPosts.find((p) => p.featured || p.id?.startsWith('gobiernu-')) || filteredPosts[0];
+  const listPosts = featuredPost ? filteredPosts.filter((p) => p.id !== featuredPost.id) : filteredPosts;
+
+  const handleCopyLink = (post: AdminPost) => {
+    const url = post.sourceUrl || window.location.href;
+    navigator.clipboard.writeText(url);
+    setCopiedLink(true);
+    setTimeout(() => setCopiedLink(false), 2000);
+  };
+
+  return (
+    <div className="space-y-8 pb-16 max-w-7xl mx-auto px-2 sm:px-4">
+      {/* Top Hero Banner */}
+      <section className="relative overflow-hidden rounded-3xl bg-slate-950 text-white p-6 sm:p-10 border border-slate-800 shadow-xl">
+        {/* Background photo & overlay */}
+        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+          <img
+            src="/curacao-handelskade-wide.jpg"
+            alt="Curaçao"
+            className="w-full h-full object-cover object-center transform scale-105 opacity-25 blur-[1px]"
+            referrerPolicy="no-referrer"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-950 via-slate-950/90 to-blue-950/40" />
+        </div>
+
+        <div className="relative z-10 space-y-4 max-w-3xl">
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold">
+              <Globe className="w-3.5 h-3.5 text-blue-400" />
+              <span>gobiernu.cw Live Feed</span>
+            </span>
+            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-500/20 text-emerald-300 text-xs font-semibold">
+              <Radio className="w-3 h-3 text-emerald-400 animate-pulse" />
+              <span>Firebase Cloud Synced</span>
+            </span>
+          </div>
+
+          <h1 className="text-2xl sm:text-4xl font-black tracking-tight text-white">
+            {language === 'es' ? 'Noticias y Comunicados Oficiales' : 'Official News & Announcements'}
+          </h1>
+
+          <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
+            {language === 'es'
+              ? 'Últimas 10 publicaciones oficiales de Gobiernu di Kòrsou (gobiernu.cw), decretos ministeriales y promociones comunitarias en tiempo real guardadas en Firebase.'
+              : 'Direct live stream of the 10 latest official news items from Gobiernu di Kòrsou (gobiernu.cw), minister announcements, and OmniLoyalty community rewards.'}
+          </p>
+
+          {/* Search & Actions Bar */}
+          <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder={
+                  language === 'es'
+                    ? 'Buscar noticias, ministros, comunicados...'
+                    : 'Search news, ministers, declarations...'
+                }
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-900/90 border border-slate-700 text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+
+            <button
+              onClick={() => loadPosts(true)}
+              disabled={isRefreshing}
+              className="flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/30 cursor-pointer disabled:opacity-60"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? 'animate-spin' : ''}`} />
+              <span>{isRefreshing ? (language === 'es' ? 'Sincronizando...' : 'Syncing...') : (language === 'es' ? 'Actualizar 10 Noticias' : 'Refresh 10 News')}</span>
+            </button>
+          </div>
+
+          {syncStatus && (
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg bg-emerald-500/20 text-emerald-300 text-xs font-medium border border-emerald-500/30">
+              <Check className="w-3.5 h-3.5" />
+              <span>{syncStatus}</span>
+            </div>
+          )}
+        </div>
+      </section>
+
+      {/* Category Tabs */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
+        <button
+          onClick={() => setSelectedCategory('All')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+            selectedCategory === 'All'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          {language === 'es' ? 'Todas las Noticias' : 'All News'} ({posts.length})
+        </button>
+
+        <button
+          onClick={() => setSelectedCategory('Gobiernu')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+            selectedCategory === 'Gobiernu'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <Globe className="w-3.5 h-3.5 text-blue-400" />
+          <span>🇨🇼 Gobiernu di Kòrsou (gobiernu.cw)</span>
+        </button>
+
+        <button
+          onClick={() => setSelectedCategory('Announcement')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+            selectedCategory === 'Announcement'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          {language === 'es' ? 'Comunicados' : 'Announcements'}
+        </button>
+
+        <button
+          onClick={() => setSelectedCategory('Promotion')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition cursor-pointer ${
+            selectedCategory === 'Promotion'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          {language === 'es' ? 'Promociones y Recompensas' : 'Promotions & Rewards'}
+        </button>
+      </div>
+
+      {/* Main Content Area */}
+      {isLoading ? (
+        <div className="py-20 text-center space-y-3 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
+          <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
+          <p className="text-sm font-bold text-slate-900 dark:text-white">
+            {language === 'es' ? 'Cargando las últimas noticias de Gobiernu.cw...' : 'Loading latest news from Gobiernu.cw & Firebase...'}
+          </p>
+          <p className="text-xs text-slate-400">
+            {language === 'es' ? 'Conectando con la base de datos Firestore.' : 'Connecting with Firestore database.'}
+          </p>
+        </div>
+      ) : filteredPosts.length === 0 ? (
+        <div className="py-20 text-center space-y-4 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
+          <Globe className="w-12 h-12 text-slate-400 mx-auto" />
+          <div>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">
+              {language === 'es' ? 'No se encontraron publicaciones' : 'No news articles found'}
+            </h3>
+            <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
+              {language === 'es'
+                ? 'No hay artículos que coincidan con tus criterios de búsqueda. Presiona actualizar para obtener las últimas 10 noticias.'
+                : 'No articles matched your criteria. Press refresh to sync the latest 10 news items from Gobiernu.cw.'}
+            </p>
+          </div>
+          <button
+            onClick={() => loadPosts(true)}
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/25"
+          >
+            {language === 'es' ? 'Sincronizar 10 Noticias Ahora' : 'Sync 10 News Now'}
+          </button>
+        </div>
+      ) : (
+        <div className="space-y-8">
+          {/* Featured Hero Article */}
+          {featuredPost && (
+            <div
+              onClick={() => setSelectedArticle(featuredPost)}
+              className="group relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer grid grid-cols-1 lg:grid-cols-12 gap-0"
+            >
+              <div className="lg:col-span-6 relative h-64 lg:h-auto min-h-[260px] bg-slate-100 dark:bg-slate-800 overflow-hidden">
+                <img
+                  src={featuredPost.imageUrl || '/curacao-handelskade.jpg'}
+                  alt={featuredPost.title}
+                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/curacao-handelskade-wide.jpg';
+                  }}
+                />
+                <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
+                  <span className="px-2.5 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-black uppercase tracking-wider shadow-sm flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    <span>{language === 'es' ? 'Destacado' : 'Top Story'}</span>
+                  </span>
+                  {featuredPost.sourceUrl && (
+                    <span className="px-2.5 py-1 rounded-lg bg-slate-900/90 text-blue-300 text-[11px] font-bold border border-blue-500/30 backdrop-blur-md">
+                      gobiernu.cw
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              <div className="lg:col-span-6 p-6 sm:p-8 flex flex-col justify-between space-y-4">
+                <div className="space-y-3">
+                  <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400">
+                    <span className="flex items-center gap-1 font-semibold text-blue-600 dark:text-blue-400">
+                      <User className="w-3.5 h-3.5" />
+                      <span>{featuredPost.author || 'Gobiernu di Kòrsou'}</span>
+                    </span>
+                    <span>•</span>
+                    <span className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>{new Date(featuredPost.createdAt).toLocaleDateString()}</span>
+                    </span>
+                  </div>
+
+                  <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                    {featuredPost.title}
+                  </h2>
+
+                  <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 line-clamp-3 leading-relaxed">
+                    {featuredPost.excerpt || featuredPost.content}
+                  </p>
+                </div>
+
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400">
+                    <BookOpen className="w-4 h-4" />
+                    <span>{language === 'es' ? 'Leer Artículo Completo' : 'Read Full Article'}</span>
+                    <ChevronRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                  </div>
+
+                  {featuredPost.sourceUrl && (
+                    <a
+                      href={featuredPost.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={(e) => e.stopPropagation()}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-slate-500 dark:text-slate-400 hover:text-blue-500 transition px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700"
+                    >
+                      <Globe className="w-3 h-3 text-blue-400" />
+                      <span>gobiernu.cw</span>
+                      <ExternalLink className="w-3 h-3" />
+                    </a>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Grid of Other Articles */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {listPosts.map((post) => {
+              const isGobiernu = post.id?.startsWith('gobiernu-') || post.author?.toLowerCase().includes('gobiernu') || post.sourceUrl?.includes('gobiernu.cw');
+
+              return (
+                <div
+                  key={post.id}
+                  onClick={() => setSelectedArticle(post)}
+                  className="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between"
+                >
+                  <div>
+                    {/* Image Header */}
+                    <div className="relative h-44 overflow-hidden bg-slate-100 dark:bg-slate-800">
+                      <img
+                        src={post.imageUrl || '/curacao-handelskade.jpg'}
+                        alt={post.title}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        referrerPolicy="no-referrer"
+                        onError={(e) => {
+                          (e.currentTarget as HTMLImageElement).src = '/curacao-handelskade-wide.jpg';
+                        }}
+                      />
+                      <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
+                        <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
+                          isGobiernu
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-indigo-600 text-white'
+                        }`}>
+                          {isGobiernu ? 'Gobiernu.cw' : post.category}
+                        </span>
+                      </div>
+                      <div className="absolute top-2.5 right-2.5 bg-slate-950/80 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-semibold text-slate-200">
+                        {new Date(post.createdAt).toLocaleDateString()}
+                      </div>
+                    </div>
+
+                    {/* Body */}
+                    <div className="p-5 space-y-2.5">
+                      <div className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                        <User className="w-3 h-3" />
+                        <span>{post.author}</span>
+                      </div>
+
+                      <h3 className="text-base font-bold text-slate-900 dark:text-white leading-snug line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                        {post.title}
+                      </h3>
+
+                      <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-3 leading-relaxed">
+                        {post.excerpt || post.content}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Footer */}
+                  <div className="p-4 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs">
+                    <span className="font-bold text-blue-600 dark:text-blue-400 flex items-center gap-1">
+                      <span>{language === 'es' ? 'Leer artículo' : 'Read article'}</span>
+                      <ChevronRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition-transform" />
+                    </span>
+
+                    {post.sourceUrl && (
+                      <a
+                        href={post.sourceUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        onClick={(e) => e.stopPropagation()}
+                        className="inline-flex items-center gap-1 text-[10px] font-semibold text-slate-500 hover:text-blue-500 transition"
+                      >
+                        <Globe className="w-3 h-3 text-blue-400" />
+                        <span>gobiernu.cw</span>
+                        <ExternalLink className="w-2.5 h-2.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================ */}
+      {/* FULL ARTICLE READER MODAL                                    */}
+      {/* ============================================================ */}
+      <AnimatePresence>
+        {selectedArticle && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-3xl rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
+            >
+              {/* Header Image */}
+              <div className="relative h-56 sm:h-72 shrink-0 bg-slate-100 dark:bg-slate-800">
+                <img
+                  src={selectedArticle.imageUrl || '/curacao-handelskade.jpg'}
+                  alt={selectedArticle.title}
+                  className="w-full h-full object-cover"
+                  referrerPolicy="no-referrer"
+                  onError={(e) => {
+                    (e.currentTarget as HTMLImageElement).src = '/curacao-handelskade-wide.jpg';
+                  }}
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
+
+                <button
+                  onClick={() => setSelectedArticle(null)}
+                  className="absolute top-4 right-4 p-2 rounded-full bg-slate-950/70 hover:bg-slate-900 text-white backdrop-blur-md transition shadow-md cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+
+                <div className="absolute bottom-4 left-6 right-6 text-white space-y-1">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-blue-300">
+                    <span className="px-2.5 py-0.5 rounded-full bg-blue-600/80 backdrop-blur-md text-white text-[10px] font-black uppercase">
+                      {selectedArticle.category}
+                    </span>
+                    <span>•</span>
+                    <span>{new Date(selectedArticle.createdAt).toLocaleDateString()}</span>
+                  </div>
+                  <h2 className="text-lg sm:text-2xl font-black text-white leading-snug">
+                    {selectedArticle.title}
+                  </h2>
+                </div>
+              </div>
+
+              {/* Body Content */}
+              <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 text-slate-800 dark:text-slate-200">
+                <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="flex items-center gap-2">
+                    <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
+                      <User className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <div className="font-bold text-slate-900 dark:text-white">{selectedArticle.author}</div>
+                      <div className="text-[11px]">Official Publication</div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleCopyLink(selectedArticle)}
+                      className="flex items-center gap-1 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-semibold transition cursor-pointer"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                      <span>{copiedLink ? (language === 'es' ? '¡Copiado!' : 'Copied!') : (language === 'es' ? 'Compartir' : 'Share')}</span>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="prose dark:prose-invert max-w-none text-sm sm:text-base leading-relaxed space-y-4">
+                  {selectedArticle.content.split('\n\n').map((para, idx) => (
+                    <p key={idx} className="leading-relaxed">
+                      {para}
+                    </p>
+                  ))}
+                </div>
+
+                {selectedArticle.sourceUrl && (
+                  <div className="p-4 rounded-2xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                    <div className="flex items-center gap-2.5">
+                      <Globe className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+                      <div>
+                        <div className="text-xs font-bold text-slate-900 dark:text-white">
+                          Gobiernu di Kòrsou Official Source
+                        </div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                          {selectedArticle.sourceUrl}
+                        </div>
+                      </div>
+                    </div>
+
+                    <a
+                      href={selectedArticle.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-sm cursor-pointer shrink-0"
+                    >
+                      <span>{language === 'es' ? 'Ver en Gobiernu.cw' : 'View on Gobiernu.cw'}</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/60 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <span className="text-xs text-slate-400 flex items-center gap-1">
+                  <ShieldCheck className="w-4 h-4 text-emerald-500" />
+                  <span>Verified Curaçao News Stream</span>
+                </span>
+                <button
+                  onClick={() => setSelectedArticle(null)}
+                  className="px-5 py-2 rounded-xl bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white text-xs font-bold transition cursor-pointer"
+                >
+                  {language === 'es' ? 'Cerrar' : 'Close'}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};

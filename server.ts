@@ -90,7 +90,8 @@ import {
   db,
   getDocs,
   collection,
-  fetchLatestUsers
+  fetchLatestUsers,
+  syncGobiernuToFirestore
 } from './server/dbSync.js';
 
 // In-Memory Fallback State (delegated to dbSync)
@@ -1421,6 +1422,30 @@ app.get('/api/admin/overview', (req, res) => {
     });
   } catch (err) {
     res.status(500).json({ error: 'Failed to fetch admin overview' });
+  }
+});
+
+// API ROUTE: Get All Public Posts / News (including live Gobiernu.cw news from Firestore)
+app.get(['/api/posts', '/api/news'], async (req, res) => {
+  try {
+    const shouldRefresh = req.query.refresh === 'true' || req.query.sync === 'true';
+    if (shouldRefresh) {
+      await syncGobiernuToFirestore(10);
+    }
+    
+    const category = req.query.category as string;
+    let results = [...postsData];
+    if (category && category !== 'All') {
+      results = results.filter((p) => p.category?.toLowerCase() === category.toLowerCase());
+    }
+
+    res.json({
+      success: true,
+      count: results.length,
+      posts: results
+    });
+  } catch (err: any) {
+    res.json({ success: true, count: postsData.length, posts: postsData });
   }
 });
 

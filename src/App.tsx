@@ -13,6 +13,7 @@ import { POSScannerTerminal } from './components/MerchantView/POSScannerTerminal
 import { RewardCatalogManager } from './components/MerchantView/RewardCatalogManager';
 import { PushNotificationBroadcaster } from './components/MerchantView/PushNotificationBroadcaster';
 import { AdminDashboard } from './components/AdminDashboard';
+import { NewsView } from './components/NewsView';
 import { LoginModal } from './components/LoginModal';
 import { PinVerificationModal } from './components/PinVerificationModal';
 import { ProfileModal } from './components/ProfileModal';
@@ -57,7 +58,7 @@ export default function App() {
     return 'user';
   });
 
-  const [activeView, setActiveView] = useState<'home' | 'wallet' | 'explore' | 'map'>(
+  const [activeView, setActiveView] = useState<'home' | 'news' | 'wallet' | 'explore' | 'map'>(
     authUser ? (authUser.role === 'merchant' ? 'wallet' : 'wallet') : 'home'
   );
 
@@ -522,6 +523,9 @@ export default function App() {
               onOpenMerchantAuth={() => handleOpenAuth('merchant', 'login')}
               onExploreStores={() => setActiveView('explore')}
             />
+          ) : activeView === 'news' ? (
+            /* Gobiernu.cw & Community News View */
+            <NewsView onOpenStoreExplore={() => setActiveView('explore')} />
           ) : currentRole === 'user' ? (
             <>
               {/* View Switching Logic for Customer App */}

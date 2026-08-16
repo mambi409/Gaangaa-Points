@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   Home as HomeIcon,
+  Newspaper,
   Store,
   Wallet,
   ShieldCheck,
@@ -23,8 +24,8 @@ interface HeaderProps {
   wallet: UserWallet;
   unreadNotifsCount: number;
   onOpenNotifications: () => void;
-  activeView: 'home' | 'wallet' | 'explore' | 'map';
-  onViewChange: (view: 'home' | 'wallet' | 'explore' | 'map') => void;
+  activeView: 'home' | 'news' | 'wallet' | 'explore' | 'map';
+  onViewChange: (view: 'home' | 'news' | 'wallet' | 'explore' | 'map') => void;
   authUser: { username: string; name: string; email?: string; passId?: string; pinCode?: string; role?: 'user' | 'merchant' | 'admin' } | null;
   onLogout: () => void;
   onOpenLogin: (mode?: 'login' | 'register') => void;
@@ -79,6 +80,18 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <HomeIcon className="w-3.5 h-3.5" />
             {t('nav.home')}
+          </button>
+
+          <button
+            onClick={() => onViewChange('news')}
+            className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+              activeView === 'news'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
+            }`}
+          >
+            <Newspaper className="w-3.5 h-3.5" />
+            {t('nav.news')}
           </button>
 
           {currentRole === 'user' && (
@@ -278,6 +291,16 @@ export const Header: React.FC<HeaderProps> = ({
         >
           <HomeIcon className="w-4 h-4" />
           <span>{t('nav.home')}</span>
+        </button>
+
+        <button
+          onClick={() => onViewChange('news')}
+          className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
+            activeView === 'news' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'
+          }`}
+        >
+          <Newspaper className="w-4 h-4" />
+          <span>{t('nav.news')}</span>
         </button>
 
         {currentRole === 'user' ? (

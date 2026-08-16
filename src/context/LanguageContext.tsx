@@ -13,6 +13,7 @@ export const translations: Record<Language, Record<string, string>> = {
   en: {
     // Header & Nav
     'nav.home': 'Home',
+    'nav.news': 'News',
     'nav.wallet': 'Digital Wallet',
     'nav.stores': 'Store Directory',
     'nav.map': 'Map & Route',
@@ -286,6 +287,7 @@ export const translations: Record<Language, Record<string, string>> = {
   es: {
     // Header & Nav
     'nav.home': 'Inicio',
+    'nav.news': 'Noticias',
     'nav.wallet': 'Billetera Digital',
     'nav.stores': 'Directorio de Tiendas',
     'nav.map': 'Mapa y Ruta',
