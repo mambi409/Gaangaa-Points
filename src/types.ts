@@ -215,6 +215,7 @@ export interface AdminPost {
   id: string;
   title: string;
   content: string;
+  excerpt?: string;
   category: 'Announcement' | 'Promotion' | 'Update' | 'Reward Alert' | 'Community';
   imageUrl?: string;
   author: string;
@@ -224,6 +225,8 @@ export interface AdminPost {
   updatedAt?: string;
   likesCount?: number;
   featured?: boolean;
+  sourceUrl?: string;
+  externalId?: string | number;
 }
 
 export interface AdminUserItem {

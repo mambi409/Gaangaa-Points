@@ -166,6 +166,13 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [postFeatured, setPostFeatured] = useState(false);
   const [isSubmittingPost, setIsSubmittingPost] = useState(false);
 
+  // ================= GOBIERNU.CW NEWS SYNC STATE =================
+  const [isGobiernuModalOpen, setIsGobiernuModalOpen] = useState(false);
+  const [isFetchingGobiernu, setIsFetchingGobiernu] = useState(false);
+  const [isImportingGobiernu, setIsImportingGobiernu] = useState(false);
+  const [gobiernuNewsList, setGobiernuNewsList] = useState<AdminPost[]>([]);
+  const [selectedGobiernuIds, setSelectedGobiernuIds] = useState<string[]>([]);
+
   // ================= STORES ONBOARDING STATE =================
   const [isAddStoreModalOpen, setIsAddStoreModalOpen] = useState(false);
   const [newStoreName, setNewStoreName] = useState('');
@@ -615,6 +622,67 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     } catch (err) {
       showToast('Error updating post status', 'error');
     }
+  };
+
+  // ================= GOBIERNU.CW NEWS HANDLERS =================
+  const handleOpenGobiernuNews = async () => {
+    setIsGobiernuModalOpen(true);
+    setIsFetchingGobiernu(true);
+    try {
+      const res = await fetch('/api/gobiernu/news?limit=10');
+      const data = await res.json();
+      if (data.success && Array.isArray(data.posts)) {
+        setGobiernuNewsList(data.posts);
+        setSelectedGobiernuIds(data.posts.map((p: any) => p.id));
+      } else {
+        showToast(data.error || 'Failed to fetch Gobiernu.cw news', 'error');
+      }
+    } catch (err) {
+      showToast('Failed to connect to Gobiernu.cw news feed', 'error');
+    } finally {
+      setIsFetchingGobiernu(false);
+    }
+  };
+
+  const handleQuickImportGobiernu = async (specificIds?: string[]) => {
+    setIsImportingGobiernu(true);
+    try {
+      const targetIds = specificIds || (selectedGobiernuIds.length > 0 ? selectedGobiernuIds : undefined);
+      const res = await fetch('/api/admin/posts/import-gobiernu', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          postIds: targetIds,
+          publishNotifications: true
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`🇨🇼 ${data.message}`, 'success');
+        fetchAdminData();
+        setIsGobiernuModalOpen(false);
+      } else {
+        showToast(data.error || 'Failed to import news from Gobiernu.cw', 'error');
+      }
+    } catch (err) {
+      showToast('Error syncing news from Gobiernu.cw', 'error');
+    } finally {
+      setIsImportingGobiernu(false);
+    }
+  };
+
+  const handleToggleSelectAllGobiernu = () => {
+    if (selectedGobiernuIds.length === gobiernuNewsList.length) {
+      setSelectedGobiernuIds([]);
+    } else {
+      setSelectedGobiernuIds(gobiernuNewsList.map((p) => p.id));
+    }
+  };
+
+  const handleToggleSelectGobiernuItem = (id: string) => {
+    setSelectedGobiernuIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
   };
 
   // ================= ONBOARD STORE HANDLER =================
@@ -1279,22 +1347,41 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         {adminMenu === 'posts' && (
           <div className="space-y-6">
             {/* Posts Header Bar */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
               <div>
-                <h1 className="text-2xl font-bold text-white tracking-tight">Posts & Announcements</h1>
+                <div className="flex items-center gap-2.5">
+                  <h1 className="text-2xl font-bold text-white tracking-tight">Posts & Announcements</h1>
+                  <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 text-[11px] font-semibold flex items-center gap-1">
+                    <Globe className="w-3 h-3 text-blue-400" />
+                    gobiernu.cw
+                  </span>
+                </div>
                 <p className="text-sm text-slate-400 mt-1">
-                  Create new posts, manage promotions, and publish news alerts to customer wallets.
+                  Create custom posts, manage community promotions, or grab the latest 10 news updates from Gobiernu di Kòrsou.
                 </p>
               </div>
 
-              <button
-                id="admin-create-post-btn"
-                onClick={handleOpenCreatePost}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/25 transition"
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create New Post</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2.5">
+                <button
+                  id="admin-grab-gobiernu-news-btn"
+                  onClick={handleOpenGobiernuNews}
+                  disabled={isImportingGobiernu}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-semibold shadow-lg shadow-blue-600/25 transition cursor-pointer"
+                >
+                  <Globe className="w-4 h-4 text-blue-200" />
+                  <span>Grab 10 Nieuws (gobiernu.cw)</span>
+                  <span className="px-1.5 py-0.5 bg-white/20 rounded text-[10px] uppercase tracking-wider font-bold">10 Live</span>
+                </button>
+
+                <button
+                  id="admin-create-post-btn"
+                  onClick={handleOpenCreatePost}
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold border border-slate-700 transition cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create New Post</span>
+                </button>
+              </div>
             </div>
 
             {/* Filter Toolbar */}
@@ -1376,11 +1463,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     <div className="p-4 space-y-2">
                       <div className="flex items-center justify-between text-xs text-slate-400">
-                        <span>By {post.author}</span>
+                        <span className="font-medium text-slate-300">By {post.author}</span>
                         <span>{new Date(post.createdAt).toLocaleDateString()}</span>
                       </div>
                       <h3 className="text-base font-bold text-white line-clamp-2 leading-snug">{post.title}</h3>
                       <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">{post.content}</p>
+
+                      {post.sourceUrl && (
+                        <div className="pt-1">
+                          <a
+                            href={post.sourceUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition font-medium bg-blue-950/40 px-2 py-0.5 rounded border border-blue-900/50"
+                          >
+                            <Globe className="w-3 h-3" />
+                            <span>Read on gobiernu.cw</span>
+                            <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-70" />
+                          </a>
+                        </div>
+                      )}
                     </div>
                   </div>
 
@@ -2607,9 +2709,225 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
                 <h3 className="text-lg font-bold text-white">{previewPost.title}</h3>
                 <p className="text-sm text-slate-300 leading-relaxed whitespace-pre-line">{previewPost.content}</p>
+
+                {previewPost.sourceUrl && (
+                  <div className="pt-2">
+                    <a
+                      href={previewPost.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-2 px-3.5 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold shadow-sm transition"
+                    >
+                      <Globe className="w-4 h-4" />
+                      <span>View Official Source Article (gobiernu.cw)</span>
+                      <ExternalLink className="w-3.5 h-3.5" />
+                    </a>
+                  </div>
+                )}
+
                 <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
                   <span>Target: {previewPost.targetAudience}</span>
                   <span className="text-emerald-400 font-semibold uppercase">{previewPost.status}</span>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* ============================================================ */}
+      {/* MODAL: GOBIERNU.CW LIVE 10 NIEUWS POSTS IMPORTER            */}
+      {/* ============================================================ */}
+      <AnimatePresence>
+        {isGobiernuModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 10 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 10 }}
+              className="w-full max-w-4xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-5 text-slate-100 relative max-h-[92vh] flex flex-col"
+            >
+              {/* Header */}
+              <div className="flex items-center justify-between pb-4 border-b border-slate-800 shrink-0">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600/20 border border-blue-500/30 flex items-center justify-center text-blue-400">
+                    <Globe className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg font-bold text-white">Gobiernu di Kòrsou (gobiernu.cw)</h3>
+                      <span className="px-2 py-0.5 rounded bg-blue-500/20 text-blue-300 text-[10px] font-bold uppercase tracking-wider">
+                        WordPress REST API
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      Live feed of the latest 10 official news posts & announcements directly from gobiernu.cw
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setIsGobiernuModalOpen(false)}
+                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Action Toolbar */}
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-950/60 p-3 rounded-xl border border-slate-800 shrink-0">
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleToggleSelectAllGobiernu}
+                    disabled={isFetchingGobiernu || gobiernuNewsList.length === 0}
+                    className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                  >
+                    {selectedGobiernuIds.length === gobiernuNewsList.length && gobiernuNewsList.length > 0
+                      ? 'Deselect All'
+                      : `Select All (${gobiernuNewsList.length})`}
+                  </button>
+                  <span className="text-xs text-slate-400">
+                    {selectedGobiernuIds.length} of {gobiernuNewsList.length} articles selected
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleOpenGobiernuNews}
+                    disabled={isFetchingGobiernu}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isFetchingGobiernu ? 'animate-spin' : ''}`} />
+                    <span>Refresh Live Feed</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleQuickImportGobiernu()}
+                    disabled={isImportingGobiernu || isFetchingGobiernu || selectedGobiernuIds.length === 0}
+                    className="flex items-center gap-1.5 px-4 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-blue-600/20 transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isImportingGobiernu ? (
+                      <>
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                        <span>Importing to Posts Feed...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Import Selected ({selectedGobiernuIds.length}) to Posts</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Feed Content Area */}
+              <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+                {isFetchingGobiernu ? (
+                  <div className="py-16 text-center space-y-3">
+                    <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
+                    <p className="text-sm font-semibold text-white">Connecting to https://gobiernu.cw...</p>
+                    <p className="text-xs text-slate-400">Fetching the latest 10 ministers & government news items.</p>
+                  </div>
+                ) : gobiernuNewsList.length === 0 ? (
+                  <div className="py-16 text-center space-y-3 bg-slate-950/40 rounded-xl border border-slate-800">
+                    <Globe className="w-10 h-10 text-slate-600 mx-auto" />
+                    <p className="text-sm font-semibold text-white">No news items returned</p>
+                    <button
+                      onClick={handleOpenGobiernuNews}
+                      className="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 transition"
+                    >
+                      Retry Connection
+                    </button>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                    {gobiernuNewsList.map((item, idx) => {
+                      const isSelected = selectedGobiernuIds.includes(item.id);
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => handleToggleSelectGobiernuItem(item.id)}
+                          className={`p-4 rounded-xl border transition cursor-pointer flex gap-3.5 ${
+                            isSelected
+                              ? 'bg-blue-950/30 border-blue-500/60 ring-1 ring-blue-500/40'
+                              : 'bg-slate-950/40 border-slate-800 hover:border-slate-700'
+                          }`}
+                        >
+                          <div className="pt-0.5">
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={() => {}}
+                              className="rounded bg-slate-800 border-slate-700 text-blue-600 focus:ring-0 cursor-pointer"
+                            />
+                          </div>
+
+                          <div className="space-y-2 flex-1 min-w-0">
+                            <div className="flex items-center justify-between text-[11px] text-slate-400">
+                              <span className="px-1.5 py-0.5 bg-blue-900/40 text-blue-300 font-semibold rounded text-[10px]">
+                                #{idx + 1} Notisia
+                              </span>
+                              <span>{new Date(item.createdAt).toLocaleDateString()}</span>
+                            </div>
+
+                            <h4 className="text-sm font-bold text-white line-clamp-2 leading-snug">
+                              {item.title}
+                            </h4>
+
+                            <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
+                              {item.excerpt || item.content}
+                            </p>
+
+                            <div className="pt-1 flex items-center justify-between">
+                              {item.sourceUrl && (
+                                <a
+                                  href={item.sourceUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 underline font-medium"
+                                >
+                                  <span>View on gobiernu.cw</span>
+                                  <ExternalLink className="w-2.5 h-2.5" />
+                                </a>
+                              )}
+
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleQuickImportGobiernu([item.id]);
+                                }}
+                                disabled={isImportingGobiernu}
+                                className="px-2 py-1 rounded bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white text-[11px] font-semibold transition"
+                              >
+                                Import this post
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400 shrink-0">
+                <span className="flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  Direct sync from official Government of Curaçao Portal (gobiernu.cw)
+                </span>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsGobiernuModalOpen(false)}
+                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold transition"
+                  >
+                    Close
+                  </button>
                 </div>
               </div>
             </motion.div>

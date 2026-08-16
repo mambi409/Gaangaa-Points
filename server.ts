@@ -1553,6 +1553,171 @@ app.delete('/api/admin/posts/:id', async (req, res) => {
   }
 });
 
+// Helper function to decode HTML entities and strip unwanted tags
+function cleanGobiernuHtml(html: string): string {
+  if (!html) return '';
+  return html
+    .replace(/&#8220;/g, '“')
+    .replace(/&#8221;/g, '”')
+    .replace(/&#8216;/g, '‘')
+    .replace(/&#8217;/g, '’')
+    .replace(/&#8211;/g, '–')
+    .replace(/&#8212;/g, '—')
+    .replace(/&#038;/g, '&')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&nbsp;/g, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Fetch latest news from Gobiernu di Kòrsou (gobiernu.cw)
+async function fetchGobiernuLatestPosts(limit = 10): Promise<AdminPost[]> {
+  try {
+    const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/ministers_nieuw?per_page=${limit}&_embed`, {
+      headers: {
+        'User-Agent': 'OmniLoyaltyCuracao/1.0 (Government-News-Reader; contact@omniloyalty.app)'
+      },
+      signal: AbortSignal.timeout(10000)
+    });
+
+    if (!res.ok) {
+      throw new Error(`gobiernu.cw returned status ${res.status}`);
+    }
+
+    const rawPosts = await res.json();
+    if (!Array.isArray(rawPosts)) {
+      return [];
+    }
+
+    return rawPosts.slice(0, limit).map((p: any, idx: number) => {
+      const title = cleanGobiernuHtml(p.title?.rendered || 'Notisia di Gobiernu di Kòrsou');
+      const rawContent = cleanGobiernuHtml(p.content?.rendered || p.excerpt?.rendered || '');
+      const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 180) + '...'));
+      const media =
+        p._embedded?.['wp:featuredmedia']?.[0]?.source_url ||
+        (idx % 2 === 0 ? '/curacao-handelskade.jpg' : '/curacao-handelskade-wide.jpg');
+
+      const post: AdminPost = {
+        id: `gobiernu-${p.id}`,
+        externalId: p.id,
+        title,
+        content: rawContent || excerpt,
+        excerpt,
+        category: 'Announcement',
+        imageUrl: media,
+        author: 'Gobiernu di Kòrsou',
+        targetAudience: 'all',
+        status: 'published',
+        createdAt: p.date ? new Date(p.date).toISOString() : new Date().toISOString(),
+        likesCount: 0,
+        featured: idx === 0,
+        sourceUrl: p.link || 'https://gobiernu.cw'
+      };
+      return post;
+    });
+  } catch (err: any) {
+    console.error('[Gobiernu News] Error fetching from gobiernu.cw:', err);
+    throw err;
+  }
+}
+
+// API ROUTE: Live Query Gobiernu.cw 10 Latest News Posts
+app.get('/api/gobiernu/news', async (req, res) => {
+  try {
+    const limit = Math.min(20, Math.max(1, parseInt(req.query.limit as string, 10) || 10));
+    const posts = await fetchGobiernuLatestPosts(limit);
+    res.json({
+      success: true,
+      source: 'https://gobiernu.cw',
+      domain: 'gobiernu.cw',
+      count: posts.length,
+      posts
+    });
+  } catch (err: any) {
+    res.status(502).json({
+      success: false,
+      error: 'Failed to retrieve news from gobiernu.cw',
+      details: err.message
+    });
+  }
+});
+
+// API ROUTE: Import & Grab 10 News Posts from Gobiernu.cw into OmniLoyalty Posts Feed
+app.post('/api/admin/posts/import-gobiernu', async (req, res) => {
+  try {
+    const { postIds, publishNotifications = true } = req.body || {};
+    const fetched = await fetchGobiernuLatestPosts(10);
+
+    const toImport = Array.isArray(postIds) && postIds.length > 0
+      ? fetched.filter((p) => postIds.includes(p.id) || (p.externalId && postIds.includes(p.externalId)))
+      : fetched;
+
+    let importedCount = 0;
+    let updatedCount = 0;
+
+    for (const item of toImport) {
+      const existingIdx = postsData.findIndex(
+        (p) => p.id === item.id || (item.externalId && p.externalId === item.externalId) || p.title === item.title
+      );
+
+      if (existingIdx >= 0) {
+        postsData[existingIdx] = {
+          ...postsData[existingIdx],
+          ...item,
+          updatedAt: new Date().toISOString()
+        };
+        await persistPost(postsData[existingIdx]);
+        updatedCount++;
+      } else {
+        await persistPost(item);
+        importedCount++;
+
+        // Send a notification alert to users
+        if (publishNotifications) {
+          const notif: NotificationMessage = {
+            id: `notif-gobiernu-${Date.now()}-${importedCount}`,
+            title: `🇨🇼 Notisia: ${item.title.slice(0, 48)}${item.title.length > 48 ? '...' : ''}`,
+            body: item.excerpt ? item.excerpt.slice(0, 140) : item.content.slice(0, 140),
+            type: 'promo',
+            timestamp: new Date().toISOString(),
+            read: false,
+            targetRole: 'all'
+          };
+          await persistNotification(notif);
+        }
+      }
+    }
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Gobiernu.cw News Synchronized (${importedCount} new, ${updatedCount} updated)`,
+      type: 'system',
+      severity: 'info',
+      details: `Grabbed ${toImport.length} official news articles from Gobiernu di Kòrsou (gobiernu.cw).`,
+      user: 'mambiadmin'
+    };
+    await persistAuditLog(log);
+
+    res.json({
+      success: true,
+      message: `Successfully grabbed ${toImport.length} post(s) from gobiernu.cw (${importedCount} new imported, ${updatedCount} refreshed)`,
+      importedCount,
+      updatedCount,
+      totalCount: toImport.length,
+      posts: postsData
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to import posts from gobiernu.cw', details: err.message });
+  }
+});
+
 // API ROUTE: Get All Registered Users / Member Accounts (Full List)
 app.get('/api/admin/users', async (req, res) => {
   try {
