@@ -827,7 +827,70 @@ export function deduplicatePostsList(posts: AdminPost[]): AdminPost[] {
   return result;
 }
 
-export async function fetchGobiernuNieuwDirect(limit = 15): Promise<AdminPost[]> {
+export interface GovernmentNewsDiffResult {
+  hasNewNews: boolean;
+  newPosts: AdminPost[];
+  modifiedPosts: AdminPost[];
+  existingPosts: AdminPost[];
+}
+
+/**
+ * Compares incoming news from Gobiernu.cw against existing stored items.
+ * If every fetched article already exists with identical timestamps/content, hasNewNews is false.
+ */
+export function detectGovernmentNewsDiff(
+  existingPosts: AdminPost[],
+  incomingPosts: AdminPost[]
+): GovernmentNewsDiffResult {
+  const existingMap = new Map<string, AdminPost>();
+  for (const ep of existingPosts) {
+    if (ep.id) existingMap.set(ep.id, ep);
+    if (ep.externalId) existingMap.set(`gobiernu-${ep.externalId}`, ep);
+  }
+
+  const newPosts: AdminPost[] = [];
+  const modifiedPosts: AdminPost[] = [];
+
+  for (const ip of incomingPosts) {
+    const existing = existingMap.get(ip.id) || (ip.externalId ? existingMap.get(`gobiernu-${ip.externalId}`) : undefined);
+    if (!existing) {
+      newPosts.push(ip);
+    } else {
+      const existingDate = new Date(existing.updatedAt || existing.createdAt).getTime();
+      const incomingDate = new Date(ip.updatedAt || ip.createdAt).getTime();
+      const titleChanged = existing.title.trim() !== ip.title.trim();
+      const excerptChanged = (existing.excerpt || '').trim() !== (ip.excerpt || '').trim();
+
+      if (incomingDate > existingDate || titleChanged || excerptChanged) {
+        modifiedPosts.push(ip);
+      }
+    }
+  }
+
+  const hasNewNews = newPosts.length > 0 || modifiedPosts.length > 0;
+  return {
+    hasNewNews,
+    newPosts,
+    modifiedPosts,
+    existingPosts
+  };
+}
+
+export async function fetchGobiernuNieuwDirect(limit = 15): Promise<{
+  posts: AdminPost[];
+  hasNewNews: boolean;
+  newCount: number;
+  message: string;
+}> {
+  const existingGovPosts = postsData.filter(
+    (p) =>
+      p.id?.startsWith('gobiernu-') ||
+      p.category === 'Government news' ||
+      p.subCategory === 'Government news' ||
+      p.sourceType === 'Government news' ||
+      p.sourceUrl?.includes('gobiernu.cw/nieuw/')
+  );
+
   try {
     console.log('[Gobiernu News] 🇨🇼 Fetching direct government feed from: https://gobiernu.cw/nieuw/ ...');
     let data: any[] = [];
@@ -872,11 +935,18 @@ export async function fetchGobiernuNieuwDirect(limit = 15): Promise<AdminPost[]>
       }
     }
 
+    // If fetch failed or no items returned, leave as is
     if (!data || data.length === 0) {
-      return postsData.filter((p) => p.id?.startsWith('gobiernu-') || p.sourceUrl?.includes('gobiernu.cw/nieuw/')).slice(0, limit);
+      console.log(`[Gobiernu News] ℹ️ No items returned from https://gobiernu.cw/nieuw/ — leaving existing ${existingGovPosts.length} government posts as is.`);
+      return {
+        posts: existingGovPosts.slice(0, limit),
+        hasNewNews: false,
+        newCount: 0,
+        message: 'No response from server; left existing feed as is.'
+      };
     }
 
-    const posts: AdminPost[] = data.slice(0, limit).map((p, idx) => {
+    const fetchedPosts: AdminPost[] = data.slice(0, limit).map((p, idx) => {
       const title = cleanGobiernuHtml(p.title?.rendered || 'Notisia di Gobiernu di Kòrsou');
       const rawContent = cleanGobiernuHtml(p.content?.rendered || p.excerpt?.rendered || '');
       const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 200) + '...'));
@@ -916,14 +986,52 @@ export async function fetchGobiernuNieuwDirect(limit = 15): Promise<AdminPost[]>
       };
     });
 
-    return posts;
+    const diff = detectGovernmentNewsDiff(existingGovPosts, fetchedPosts);
+
+    // If no new news, LEAVE AS IS
+    if (!diff.hasNewNews) {
+      console.log(`[Gobiernu News] ℹ️ Checked https://gobiernu.cw/nieuw/ — no new news found. Retaining existing feed (${existingGovPosts.length} posts) as is.`);
+      return {
+        posts: existingGovPosts.slice(0, limit),
+        hasNewNews: false,
+        newCount: 0,
+        message: 'No new news published on Gobiernu.cw; retained existing feed as is.'
+      };
+    }
+
+    // New news found: update store
+    console.log(`[Gobiernu News] 📰 New news detected on https://gobiernu.cw/nieuw/: ${diff.newPosts.length} new, ${diff.modifiedPosts.length} modified.`);
+    if (db) {
+      for (const post of [...diff.newPosts, ...diff.modifiedPosts]) {
+        await setDoc(doc(db, 'posts', post.id), post).catch(() => {});
+      }
+    }
+
+    const merged = deduplicatePostsList([...fetchedPosts, ...existingGovPosts]).slice(0, limit);
+    return {
+      posts: merged,
+      hasNewNews: true,
+      newCount: diff.newPosts.length,
+      message: `Updated with ${diff.newPosts.length} new government post(s).`
+    };
   } catch (err) {
     console.error('[Gobiernu News] Error fetching directly from https://gobiernu.cw/nieuw/:', err);
-    return postsData.filter((p) => p.id?.startsWith('gobiernu-')).slice(0, limit);
+    return {
+      posts: existingGovPosts.slice(0, limit),
+      hasNewNews: false,
+      newCount: 0,
+      message: 'Fetch error; left existing feed as is.'
+    };
   }
 }
 
-export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPost[]> {
+export async function syncGobiernuToFirestore(totalLimit = 10): Promise<{
+  posts: AdminPost[];
+  hasNewNews: boolean;
+  newPostsCount: number;
+  modifiedPostsCount: number;
+  message: string;
+}> {
   const governmentEndpoints = [
     { key: 'nieuw', name: 'Notisia General' },
     { key: 'ministers_nieuw', name: 'Notisia di Ministernan' },
@@ -935,8 +1043,18 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
     { key: 'posts', name: 'Publikashonnan' }
   ];
 
+  // Retrieve current government posts from memory & Firestore
+  const existingGovPosts = postsData.filter(
+    (p) =>
+      p.id?.startsWith('gobiernu-') ||
+      p.category === 'Government news' ||
+      p.subCategory === 'Government news' ||
+      p.sourceType === 'Government news' ||
+      p.sourceUrl?.includes('gobiernu.cw')
+  );
+
   try {
-    console.log('[Firestore] 🇨🇼 Fetching from all Gobiernu.cw subcategories to aggregate the top 10 latest items under "Government news"...');
+    console.log('[Firestore] 🇨🇼 Checking Gobiernu.cw for latest news items under "Government news"...');
     const rawItems: any[] = [];
 
     // Concurrently fetch from all government subcategory endpoints with dual-strategy
@@ -997,9 +1115,16 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
       })
     );
 
+    // If no items fetched, leave existing news as is
     if (rawItems.length === 0) {
-      console.warn('[Firestore] No items retrieved from Gobiernu.cw subcategories.');
-      return deduplicatePostsList(postsData.filter((p) => p.id?.startsWith('gobiernu-'))).slice(0, totalLimit);
+      console.warn('[Firestore] No items retrieved from Gobiernu.cw endpoints. Leaving existing posts as is.');
+      return {
+        posts: existingGovPosts.slice(0, totalLimit),
+        hasNewNews: false,
+        newPostsCount: 0,
+        modifiedPostsCount: 0,
+        message: 'Could not reach server; left existing government news as is.'
+      };
     }
 
     // Deduplicate all collected items across all subcategories by ID, normalized title, and normalized URL
@@ -1076,10 +1201,51 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
       };
     });
 
-    // Persist all 10 posts under Government news to Firestore and prune older ones
+    // Detect if there is ANY NEW or MODIFIED news
+    const diff = detectGovernmentNewsDiff(existingGovPosts, fetchedPosts);
+
+    // =========================================================================
+    // IF NO NEW NEWS: LEAVE AS IS
+    // =========================================================================
+    if (!diff.hasNewNews) {
+      console.log(`[Gobiernu News] ℹ️ Checked https://gobiernu.cw/nieuw/ — no new news found (${fetchedPosts.length} articles identical to stored posts). Leaving existing feed as is.`);
+
+      // Update sync metadata indicating checked and verified without modifying post documents
+      if (db) {
+        try {
+          await setDoc(
+            doc(db, 'system', 'gobiernu_sync_status'),
+            {
+              lastCheckedAt: new Date().toISOString(),
+              hasNewNews: false,
+              status: 'up_to_date',
+              message: 'No new news detected on Gobiernu.cw; existing feed left as is.',
+              totalExisting: existingGovPosts.length,
+              topArticle: existingGovPosts[0]?.title || ''
+            },
+            { merge: true }
+          );
+        } catch (_statusErr) {}
+      }
+
+      return {
+        posts: existingGovPosts.slice(0, totalLimit),
+        hasNewNews: false,
+        newPostsCount: 0,
+        modifiedPostsCount: 0,
+        message: 'No new news found on Gobiernu.cw. Existing feed left as is.'
+      };
+    }
+
+    // =========================================================================
+    // IF NEW NEWS FOUND: PERSIST NEW/MODIFIED AND SAFELY PRUNE
+    // =========================================================================
+    console.log(`[Gobiernu News] 📰 New news detected! ${diff.newPosts.length} new article(s) and ${diff.modifiedPosts.length} updated article(s). Syncing to Firestore...`);
+
     const todayYMD = new Date().toISOString().slice(0, 10);
     const activeTop10Ids = new Set(fetchedPosts.map((p) => p.id));
 
+    // Safely prune older government posts from Firestore that dropped off top 10
     if (db) {
       try {
         const existingPostsSnap = await getDocs(collection(db, 'posts'));
@@ -1094,7 +1260,8 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
       }
     }
 
-    for (const post of fetchedPosts) {
+    // Save only new and modified posts to Firestore
+    for (const post of [...diff.newPosts, ...diff.modifiedPosts]) {
       if (db) {
         try {
           await setDoc(doc(db, 'posts', post.id), post);
@@ -1102,8 +1269,10 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
           console.error(`[Firestore] Error persisting post ${post.id} to Firestore:`, dbErr);
         }
       }
+    }
 
-      // Check if post is published on the SAME DAY for notification push
+    // Send push notification ONLY for genuinely new posts published today
+    for (const post of diff.newPosts) {
       const postDateYMD = new Date(post.createdAt).toISOString().slice(0, 10);
       if (postDateYMD === todayYMD) {
         const notifId = `notif-news-${post.id}`;
@@ -1143,6 +1312,10 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
       try {
         await setDoc(doc(db, 'system', 'gobiernu_sync_status'), {
           lastScannedAt: new Date().toISOString(),
+          hasNewNews: true,
+          status: 'updated',
+          newArticlesAdded: diff.newPosts.length,
+          modifiedArticles: diff.modifiedPosts.length,
           category: 'Government news',
           totalScannedAcrossSubcategories: uniqueRawItems.length,
           savedCount: fetchedPosts.length,
@@ -1155,10 +1328,22 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
     }
 
     console.log(`[Firestore] ✅ Consolidated ${fetchedPosts.length} latest articles from all subcategories under "Government news" in Firebase Firestore.`);
-    return fetchedPosts;
+    return {
+      posts: fetchedPosts,
+      hasNewNews: true,
+      newPostsCount: diff.newPosts.length,
+      modifiedPostsCount: diff.modifiedPosts.length,
+      message: `Updated with ${diff.newPosts.length} new government post(s).`
+    };
   } catch (err) {
     console.warn('[Firestore] Notice: Government news aggregation error:', err);
-    return deduplicatePostsList(postsData.filter((p) => p.id?.startsWith('gobiernu-'))).slice(0, totalLimit);
+    return {
+      posts: existingGovPosts.slice(0, totalLimit),
+      hasNewNews: false,
+      newPostsCount: 0,
+      modifiedPostsCount: 0,
+      message: 'Aggregation error; retained existing feed as is.'
+    };
   }
 }
 

@@ -229,11 +229,6 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         sourceUrl: item.link || 'https://gobiernu.cw'
       };
 
-      // Persist to Firestore directly from client if db is available
-      if (db) {
-        setDoc(doc(db, 'posts', postObj.id), postObj).catch(() => {});
-      }
-
       return postObj;
     });
 
@@ -250,6 +245,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
     setSyncStatus(null);
 
     let loadedPosts: AdminPost[] = [];
+    let serverHasNewNews: boolean | undefined = undefined;
 
     // 1. Attempt API fetch (triggers multi-subcategory scan across all WordPress categories)
     try {
@@ -259,6 +255,9 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         const data = await res.json();
         if (data && Array.isArray(data.posts) && data.posts.length > 0) {
           loadedPosts = data.posts;
+          if (data.hasNewNews !== undefined) {
+            serverHasNewNews = data.hasNewNews;
+          }
         }
       }
     } catch (apiErr) {
@@ -286,14 +285,31 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       try {
         const directPosts = await fetchGobiernuDirectClient();
         if (directPosts.length > 0) {
-          const nonGovPosts = loadedPosts.filter(
-            (p) =>
-              !p.id?.startsWith('gobiernu-') &&
-              p.author !== 'Gobiernu di Kòrsou' &&
-              !p.author?.toLowerCase().includes('gobiernu') &&
-              !p.sourceUrl?.includes('gobiernu.cw')
-          );
-          loadedPosts = [...directPosts, ...nonGovPosts];
+          const existingIds = new Set(loadedPosts.map((p) => p.id));
+          const newItems = directPosts.filter((dp) => !existingIds.has(dp.id));
+
+          // Only write genuinely new posts to Firestore
+          if (db && newItems.length > 0) {
+            for (const item of newItems) {
+              setDoc(doc(db, 'posts', item.id), item).catch(() => {});
+            }
+          }
+
+          if (newItems.length > 0) {
+            serverHasNewNews = true;
+            const nonGovPosts = loadedPosts.filter(
+              (p) =>
+                !p.id?.startsWith('gobiernu-') &&
+                p.author !== 'Gobiernu di Kòrsou' &&
+                !p.author?.toLowerCase().includes('gobiernu') &&
+                !p.sourceUrl?.includes('gobiernu.cw')
+            );
+            loadedPosts = [...directPosts, ...nonGovPosts];
+          } else if (loadedPosts.length === 0) {
+            loadedPosts = directPosts;
+          } else {
+            serverHasNewNews = false;
+          }
         }
       } catch (directErr) {
         console.warn('[NewsView] Direct client sync notice:', directErr);
@@ -306,11 +322,19 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       uniquePosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
       setPosts(uniquePosts);
       if (forceSync) {
-        setSyncStatus(
-          language === 'es'
-            ? `¡Noticias del Gobierno sincronizadas! Las 10 últimas noticias guardadas en Firebase.`
-            : `Government news synced! Top 10 latest articles saved in Firebase.`
-        );
+        if (serverHasNewNews === false) {
+          setSyncStatus(
+            language === 'es'
+              ? 'No hay noticias nuevas en gobiernu.cw. Se mantuvo el feed actual.'
+              : 'No new news found on gobiernu.cw. Existing feed retained as is.'
+          );
+        } else {
+          setSyncStatus(
+            language === 'es'
+              ? '¡Noticias del Gobierno sincronizadas con Firebase Firestore!'
+              : 'Government news synced with Firebase Firestore!'
+          );
+        }
       }
     }
 

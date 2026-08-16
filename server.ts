@@ -1846,7 +1846,8 @@ function cleanGobiernuHtml(html: string): string {
 // Fetch latest news from Gobiernu di Kòrsou across all subcategories
 async function fetchGobiernuLatestPosts(limit = 10): Promise<AdminPost[]> {
   try {
-    return await syncGobiernuToFirestore(limit);
+    const result = await syncGobiernuToFirestore(limit);
+    return result.posts;
   } catch (err: any) {
     console.error('[Gobiernu News] Error scanning all subcategories from gobiernu.cw:', err);
     return postsData.filter((p) => p.id?.startsWith('gobiernu-')).slice(0, limit);
@@ -1857,13 +1858,16 @@ async function fetchGobiernuLatestPosts(limit = 10): Promise<AdminPost[]> {
 app.get(['/api/gobiernu/nieuw', '/api/gobiernu/feed'], async (req, res) => {
   try {
     const limit = Math.min(30, Math.max(1, parseInt(req.query.limit as string, 10) || 15));
-    const posts = await fetchGobiernuNieuwDirect(limit);
+    const result = await fetchGobiernuNieuwDirect(limit);
     res.json({
       success: true,
       source: 'https://gobiernu.cw/nieuw/',
       feedUrl: 'https://gobiernu.cw/wp-json/wp/v2/nieuw',
-      count: posts.length,
-      posts
+      hasNewNews: result.hasNewNews,
+      newCount: result.newCount,
+      message: result.message,
+      count: result.posts.length,
+      posts: result.posts
     });
   } catch (err: any) {
     res.status(502).json({
@@ -1882,23 +1886,30 @@ app.get('/api/gobiernu/news', async (req, res) => {
     
     // If specifically requesting nieuw feed
     if (sourceParam && (sourceParam.includes('nieuw') || sourceParam === 'nieuw')) {
-      const posts = await fetchGobiernuNieuwDirect(limit);
+      const result = await fetchGobiernuNieuwDirect(limit);
       return res.json({
         success: true,
         source: 'https://gobiernu.cw/nieuw/',
-        count: posts.length,
-        posts
+        hasNewNews: result.hasNewNews,
+        newCount: result.newCount,
+        message: result.message,
+        count: result.posts.length,
+        posts: result.posts
       });
     }
 
-    const posts = await syncGobiernuToFirestore(limit);
+    const result = await syncGobiernuToFirestore(limit);
     res.json({
       success: true,
       source: 'https://gobiernu.cw/nieuw/',
       domain: 'gobiernu.cw',
       subcategoriesScanned: ['nieuw', 'ministers_nieuw', 'konseho_niews', 'breaking-news', 'optima_forma', 'landscourant', 'posts'],
-      count: posts.length,
-      posts
+      hasNewNews: result.hasNewNews,
+      newPostsCount: result.newPostsCount,
+      modifiedPostsCount: result.modifiedPostsCount,
+      message: result.message,
+      count: result.posts.length,
+      posts: result.posts
     });
   } catch (err: any) {
     res.status(502).json({
@@ -1913,24 +1924,30 @@ app.get('/api/gobiernu/news', async (req, res) => {
 app.post(['/api/gobiernu/scan-all', '/api/admin/gobiernu/daily-scan'], async (req, res) => {
   try {
     const limit = Math.min(20, Math.max(1, parseInt(req.body?.limit || req.query.limit as string, 10) || 10));
-    const synced = await syncGobiernuToFirestore(limit);
+    const result = await syncGobiernuToFirestore(limit);
 
-    const log: SystemAuditLog = {
-      id: `audit-scan-${Date.now()}`,
-      timestamp: new Date().toISOString(),
-      title: `Daily Gobiernu.cw Multi-Subcategory Scan Completed (${synced.length} synced to Firestore)`,
-      type: 'system',
-      severity: 'info',
-      details: `Scanned all subcategories (nieuw, ministers_nieuw, konseho_niews, breaking-news, optima_forma, landscourant, posts) and updated Firebase Firestore with 10 latest articles.`,
-      user: 'mambiadmin'
-    };
-    await persistAuditLog(log);
+    if (result.hasNewNews) {
+      const log: SystemAuditLog = {
+        id: `audit-scan-${Date.now()}`,
+        timestamp: new Date().toISOString(),
+        title: `Gobiernu.cw Scan: ${result.newPostsCount} new article(s) synced to Firestore`,
+        type: 'system',
+        severity: 'info',
+        details: `Scanned all subcategories (nieuw, ministers_nieuw, etc.) and persisted ${result.newPostsCount} new articles to Firebase Firestore.`,
+        user: 'mambiadmin'
+      };
+      await persistAuditLog(log);
+    }
 
     res.json({
       success: true,
-      message: `Successfully scanned all subcategories and synced the top ${synced.length} articles to Firebase Firestore.`,
-      count: synced.length,
-      posts: synced
+      hasNewNews: result.hasNewNews,
+      message: result.hasNewNews
+        ? `Found ${result.newPostsCount} new article(s). Synced latest top ${result.posts.length} articles to Firebase Firestore.`
+        : `No new news published on Gobiernu.cw. Retained existing feed as is.`,
+      newPostsCount: result.newPostsCount,
+      count: result.posts.length,
+      posts: result.posts
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Daily scan failed', details: err.message });
