@@ -448,15 +448,15 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                 onClick={() => setSelectedArticle(featuredPost)}
                 className="group relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer grid grid-cols-1 lg:grid-cols-12 gap-0"
               >
-                <div className="lg:col-span-6 relative h-64 lg:h-auto min-h-[280px] bg-slate-950 overflow-hidden">
+                <div className="lg:col-span-6 relative h-64 lg:h-auto min-h-[280px] bg-white dark:bg-white overflow-hidden flex items-center justify-center border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800 p-4">
                   <img
                     src={featuredPost.imageUrl || '/gobiernu_2x.png'}
                     alt={featuredPost.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    className={`w-full h-full ${isGovLogo ? 'object-contain p-4 max-h-64' : 'object-cover group-hover:scale-105'} transition-transform duration-500`}
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
+                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain p-4 max-h-64';
                     }}
                   />
                   <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
@@ -538,16 +538,16 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                   className="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between"
                 >
                   <div>
-                    {/* Image Header with official Government Logo Fallback */}
-                    <div className="relative h-44 overflow-hidden bg-slate-950">
+                    {/* Image Header with white background for official Government Logo blending */}
+                    <div className="relative h-44 overflow-hidden bg-white dark:bg-white flex items-center justify-center border-b border-slate-200 dark:border-slate-800 p-3">
                       <img
                         src={post.imageUrl || '/gobiernu_2x.png'}
                         alt={post.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className={`w-full h-full ${isGovLogo ? 'object-contain max-h-36' : 'object-cover group-hover:scale-105'} transition-transform duration-300`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                          (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
+                          (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain max-h-36';
                         }}
                       />
                       <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
@@ -556,7 +556,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                           <span>{meta.label}</span>
                         </span>
                       </div>
-                      <div className="absolute top-2.5 right-2.5 bg-slate-950/80 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-semibold text-slate-200">
+                      <div className="absolute top-2.5 right-2.5 bg-slate-900/80 backdrop-blur-md px-2 py-0.5 rounded-md text-[10px] font-semibold text-slate-200">
                         {new Date(post.createdAt).toLocaleDateString()}
                       </div>
                     </div>
@@ -627,43 +627,62 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                 className="w-full max-w-3xl rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
               >
                 {/* Header Image with Government Logo Support */}
-                <div className="relative h-56 sm:h-72 shrink-0 bg-slate-950 overflow-hidden">
+                <div className={`relative ${isGovLogo ? 'h-48 sm:h-56 bg-white dark:bg-white flex items-center justify-center p-6 border-b border-slate-200 dark:border-slate-800' : 'h-56 sm:h-72 bg-slate-950 overflow-hidden'}`}>
                   <img
                     src={selectedArticle.imageUrl || '/gobiernu_2x.png'}
                     alt={selectedArticle.title}
-                    className="w-full h-full object-cover"
+                    className={`w-full h-full ${isGovLogo ? 'object-contain max-h-44' : 'object-cover'}`}
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
+                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain max-h-44';
                     }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
+                  {!isGovLogo && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
+                  )}
 
                   <button
                     onClick={() => setSelectedArticle(null)}
-                    className="absolute top-4 right-4 p-2 rounded-full bg-slate-950/70 hover:bg-slate-900 text-white backdrop-blur-md transition shadow-md cursor-pointer z-10"
+                    className="absolute top-4 right-4 p-2 rounded-full bg-slate-900/80 hover:bg-slate-900 text-white backdrop-blur-md transition shadow-md cursor-pointer z-10"
                   >
                     <X className="w-5 h-5" />
                   </button>
 
-                  <div className="absolute bottom-4 left-6 right-6 text-white space-y-1 z-10">
-                    <div className="flex items-center gap-2 text-xs font-semibold text-blue-300">
-                      <span className={`px-2.5 py-0.5 rounded-full ${modalMeta.color} backdrop-blur-md text-white text-[10px] font-black uppercase flex items-center gap-1`}>
-                        <ModalIcon className="w-2.5 h-2.5" />
-                        <span>{modalMeta.label}</span>
-                      </span>
-                      <span>•</span>
-                      <span>{new Date(selectedArticle.createdAt).toLocaleDateString()}</span>
+                  {!isGovLogo && (
+                    <div className="absolute bottom-4 left-6 right-6 text-white space-y-1 z-10">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-blue-300">
+                        <span className={`px-2.5 py-0.5 rounded-full ${modalMeta.color} backdrop-blur-md text-white text-[10px] font-black uppercase flex items-center gap-1`}>
+                          <ModalIcon className="w-2.5 h-2.5" />
+                          <span>{modalMeta.label}</span>
+                        </span>
+                        <span>•</span>
+                        <span>{new Date(selectedArticle.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <h2 className="text-lg sm:text-2xl font-black text-white leading-snug drop-shadow-md">
+                        {selectedArticle.title}
+                      </h2>
                     </div>
-                    <h2 className="text-lg sm:text-2xl font-black text-white leading-snug drop-shadow-md">
-                      {selectedArticle.title}
-                    </h2>
-                  </div>
+                  )}
                 </div>
 
                 {/* Body Content */}
                 <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 text-slate-800 dark:text-slate-200">
+                  {isGovLogo && (
+                    <div className="space-y-2 pb-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-blue-600 dark:text-blue-400">
+                        <span className={`px-2.5 py-0.5 rounded-full ${modalMeta.color} text-white text-[10px] font-black uppercase flex items-center gap-1`}>
+                          <ModalIcon className="w-2.5 h-2.5" />
+                          <span>{modalMeta.label}</span>
+                        </span>
+                        <span>•</span>
+                        <span>{new Date(selectedArticle.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-snug">
+                        {selectedArticle.title}
+                      </h2>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">

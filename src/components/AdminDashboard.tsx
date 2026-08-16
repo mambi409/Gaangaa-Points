@@ -1777,16 +1777,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden flex flex-col justify-between hover:border-blue-900/60 transition shadow-sm"
                   >
                     <div>
-                      {/* Cover Style Image */}
-                      <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
+                      {/* White Background Image Header to blend seamlessly with government logo */}
+                      <div className="relative h-44 w-full bg-white overflow-hidden flex items-center justify-center border-b border-slate-800 p-4">
                         <img
                           src={post.imageUrl || '/gobiernu_2x.png'}
                           alt={post.title}
-                          className="w-full h-full object-cover"
+                          className="w-full h-full object-contain max-h-36 transition-transform duration-300 group-hover:scale-105"
                           referrerPolicy="no-referrer"
                           onError={(e) => {
                             (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                            (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
+                            (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain max-h-36';
                           }}
                         />
                         <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
@@ -3233,10 +3233,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                               <img
                                 src={item.imageUrl || '/gobiernu_2x.png'}
                                 alt=""
-                                className="w-12 h-12 rounded-lg bg-slate-900 object-cover shrink-0 border border-slate-800"
+                                className="w-12 h-12 rounded-lg bg-white object-contain p-1 shrink-0 border border-slate-700"
                                 onError={(e) => {
                                   (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                                  (e.currentTarget as HTMLImageElement).className = 'w-12 h-12 rounded-lg bg-slate-900 object-contain p-1 shrink-0 border border-slate-800';
+                                  (e.currentTarget as HTMLImageElement).className = 'w-12 h-12 rounded-lg bg-white object-contain p-1 shrink-0 border border-slate-700';
                                 }}
                               />
                               <div className="min-w-0 flex-1">
