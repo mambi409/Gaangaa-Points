@@ -1601,66 +1601,26 @@ function cleanGobiernuHtml(html: string): string {
     .trim();
 }
 
-// Fetch latest news from Gobiernu di Kòrsou (gobiernu.cw)
+// Fetch latest news from Gobiernu di Kòrsou across all subcategories
 async function fetchGobiernuLatestPosts(limit = 10): Promise<AdminPost[]> {
   try {
-    const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/ministers_nieuw?per_page=${limit}&_embed`, {
-      headers: {
-        'User-Agent': 'OmniLoyaltyCuracao/1.0 (Government-News-Reader; contact@omniloyalty.app)'
-      },
-      signal: AbortSignal.timeout(10000)
-    });
-
-    if (!res.ok) {
-      throw new Error(`gobiernu.cw returned status ${res.status}`);
-    }
-
-    const rawPosts = await res.json();
-    if (!Array.isArray(rawPosts)) {
-      return [];
-    }
-
-    return rawPosts.slice(0, limit).map((p: any, idx: number) => {
-      const title = cleanGobiernuHtml(p.title?.rendered || 'Notisia di Gobiernu di Kòrsou');
-      const rawContent = cleanGobiernuHtml(p.content?.rendered || p.excerpt?.rendered || '');
-      const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 180) + '...'));
-      const media =
-        p._embedded?.['wp:featuredmedia']?.[0]?.source_url ||
-        (idx % 2 === 0 ? '/curacao-handelskade.jpg' : '/curacao-handelskade-wide.jpg');
-
-      const post: AdminPost = {
-        id: `gobiernu-${p.id}`,
-        externalId: p.id,
-        title,
-        content: rawContent || excerpt,
-        excerpt,
-        category: 'Announcement',
-        imageUrl: media,
-        author: 'Gobiernu di Kòrsou',
-        targetAudience: 'all',
-        status: 'published',
-        createdAt: p.date ? new Date(p.date).toISOString() : new Date().toISOString(),
-        likesCount: 0,
-        featured: idx === 0,
-        sourceUrl: p.link || 'https://gobiernu.cw'
-      };
-      return post;
-    });
+    return await syncGobiernuToFirestore(limit);
   } catch (err: any) {
-    console.error('[Gobiernu News] Error fetching from gobiernu.cw:', err);
-    throw err;
+    console.error('[Gobiernu News] Error scanning all subcategories from gobiernu.cw:', err);
+    return postsData.filter((p) => p.id?.startsWith('gobiernu-')).slice(0, limit);
   }
 }
 
-// API ROUTE: Live Query Gobiernu.cw 10 Latest News Posts
+// API ROUTE: Live Query Gobiernu.cw 10 Latest News Posts across all subcategories
 app.get('/api/gobiernu/news', async (req, res) => {
   try {
     const limit = Math.min(20, Math.max(1, parseInt(req.query.limit as string, 10) || 10));
-    const posts = await fetchGobiernuLatestPosts(limit);
+    const posts = await syncGobiernuToFirestore(limit);
     res.json({
       success: true,
       source: 'https://gobiernu.cw',
       domain: 'gobiernu.cw',
+      subcategoriesScanned: ['nieuw', 'ministers_nieuw', 'konseho_niews', 'breaking-news', 'optima_forma', 'landscourant', 'posts'],
       count: posts.length,
       posts
     });
@@ -1670,6 +1630,34 @@ app.get('/api/gobiernu/news', async (req, res) => {
       error: 'Failed to retrieve news from gobiernu.cw',
       details: err.message
     });
+  }
+});
+
+// API ROUTE: Trigger Multi-Subcategory Daily Scan & Sync to Firebase
+app.post(['/api/gobiernu/scan-all', '/api/admin/gobiernu/daily-scan'], async (req, res) => {
+  try {
+    const limit = Math.min(20, Math.max(1, parseInt(req.body?.limit || req.query.limit as string, 10) || 10));
+    const synced = await syncGobiernuToFirestore(limit);
+
+    const log: SystemAuditLog = {
+      id: `audit-scan-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Daily Gobiernu.cw Multi-Subcategory Scan Completed (${synced.length} synced to Firestore)`,
+      type: 'system',
+      severity: 'info',
+      details: `Scanned all subcategories (nieuw, ministers_nieuw, konseho_niews, breaking-news, optima_forma, landscourant, posts) and updated Firebase Firestore with 10 latest articles.`,
+      user: 'mambiadmin'
+    };
+    await persistAuditLog(log);
+
+    res.json({
+      success: true,
+      message: `Successfully scanned all subcategories and synced the top ${synced.length} articles to Firebase Firestore.`,
+      count: synced.length,
+      posts: synced
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Daily scan failed', details: err.message });
   }
 });
 
@@ -2300,6 +2288,17 @@ async function startServer() {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
     });
+
+    // Schedule automatic scan every 6 hours to keep the latest 10 news items freshly synced in Firestore
+    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+    setInterval(async () => {
+      try {
+        console.log('[Scheduler] ⏰ Running scheduled Gobiernu.cw multi-subcategory news scan...');
+        await syncGobiernuToFirestore(10);
+      } catch (scheduleErr) {
+        console.warn('[Scheduler] Scheduled Gobiernu news scan notice:', scheduleErr);
+      }
+    }, SIX_HOURS_MS);
   }
 }
 

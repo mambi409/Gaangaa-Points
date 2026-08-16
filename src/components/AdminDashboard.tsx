@@ -2866,15 +2866,33 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                           <div className="space-y-2 flex-1 min-w-0">
                             <div className="flex items-center justify-between text-[11px] text-slate-400">
-                              <span className="px-1.5 py-0.5 bg-blue-900/40 text-blue-300 font-semibold rounded text-[10px]">
-                                #{idx + 1} Notisia
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="px-1.5 py-0.5 bg-blue-900/40 text-blue-300 font-semibold rounded text-[10px]">
+                                  #{idx + 1}
+                                </span>
+                                <span className="px-2 py-0.5 bg-indigo-900/40 text-indigo-300 font-semibold rounded text-[10px]">
+                                  {item.subCategory || item.sourceType || 'Notisia'}
+                                </span>
+                              </div>
                               <span>{new Date(item.createdAt).toLocaleDateString()}</span>
                             </div>
 
-                            <h4 className="text-sm font-bold text-white line-clamp-2 leading-snug">
-                              {item.title}
-                            </h4>
+                            <div className="flex items-start gap-2.5">
+                              <img
+                                src={item.imageUrl || '/gobiernu-logo.svg'}
+                                alt=""
+                                className="w-12 h-12 rounded-lg bg-slate-900 object-cover shrink-0 border border-slate-800"
+                                onError={(e) => {
+                                  (e.currentTarget as HTMLImageElement).src = '/gobiernu-logo.svg';
+                                  (e.currentTarget as HTMLImageElement).className = 'w-12 h-12 rounded-lg bg-slate-900 object-contain p-1 shrink-0 border border-slate-800';
+                                }}
+                              />
+                              <div className="min-w-0 flex-1">
+                                <h4 className="text-sm font-bold text-white line-clamp-2 leading-snug">
+                                  {item.title}
+                                </h4>
+                              </div>
+                            </div>
 
                             <p className="text-xs text-slate-300 line-clamp-2 leading-relaxed">
                               {item.excerpt || item.content}
@@ -2901,7 +2919,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                                   handleQuickImportGobiernu([item.id]);
                                 }}
                                 disabled={isImportingGobiernu}
-                                className="px-2 py-1 rounded bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white text-[11px] font-semibold transition"
+                                className="px-2 py-1 rounded bg-slate-800 hover:bg-blue-600 text-slate-300 hover:text-white text-[11px] font-semibold transition cursor-pointer"
                               >
                                 Import this post
                               </button>

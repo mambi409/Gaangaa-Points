@@ -217,6 +217,8 @@ export interface AdminPost {
   content: string;
   excerpt?: string;
   category: 'Announcement' | 'Promotion' | 'Update' | 'Reward Alert' | 'Community';
+  subCategory?: string;
+  sourceType?: string;
   imageUrl?: string;
   author: string;
   targetAudience: 'all' | 'user' | 'merchant';

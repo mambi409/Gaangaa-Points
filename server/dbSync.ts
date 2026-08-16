@@ -772,43 +772,103 @@ export function cleanGobiernuHtml(htmlStr: string): string {
 }
 
 export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> {
-  try {
-    console.log('[Firestore] Fetching 10 latest news items from Gobiernu.cw...');
-    const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/ministers_nieuw?per_page=${limit}&_embed`, {
-      headers: {
-        'User-Agent': 'OmniLoyaltyCuracao/1.0 (Government-News-Reader; contact@omniloyalty.app)'
-      },
-      signal: AbortSignal.timeout(12000)
-    });
+  const governmentEndpoints = [
+    { key: 'nieuw', name: 'Notisia General', category: 'Announcement', subCategory: 'Notisia General / News' },
+    { key: 'ministers_nieuw', name: 'Notisia di Ministernan', category: 'Announcement', subCategory: 'Notisia di Ministernan' },
+    { key: 'konseho_niews', name: 'Notisia di Konseho', category: 'Announcement', subCategory: 'Notisia di Konseho' },
+    { key: 'breaking-news', name: 'Breaking News', category: 'Announcement', subCategory: 'Breaking News' },
+    { key: 'optima_forma', name: 'Óptima Forma', category: 'Announcement', subCategory: 'Óptima Forma' },
+    { key: 'landscourant', name: 'Landscourant', category: 'Announcement', subCategory: 'Landscourant Ofisial' },
+    { key: 'posts', name: 'Publikashonnan', category: 'Announcement', subCategory: 'Publikashon' }
+  ];
 
-    if (!res.ok) {
-      console.warn(`[Firestore] Gobiernu.cw responded with status ${res.status}`);
+  try {
+    console.log('[Firestore] 🇨🇼 Starting daily scan across ALL Gobiernu.cw news subcategories...');
+    const aggregatedRaw: Array<{ raw: any; endpointMeta: typeof governmentEndpoints[0] }> = [];
+
+    // Scan all subcategory endpoints concurrently with individual timeouts
+    await Promise.allSettled(
+      governmentEndpoints.map(async (ep) => {
+        try {
+          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${ep.key}?per_page=12&_embed`, {
+            headers: {
+              'User-Agent': 'OmniLoyaltyCuracao/1.0 (Government-News-Aggregator; contact@omniloyalty.app)'
+            },
+            signal: AbortSignal.timeout(9000)
+          });
+
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) {
+              for (const item of data) {
+                if (item && item.id) {
+                  aggregatedRaw.push({ raw: item, endpointMeta: ep });
+                }
+              }
+            }
+          }
+        } catch (epErr) {
+          // Log individual endpoint notice without breaking whole scan
+          console.warn(`[Firestore] Notice on endpoint ${ep.key}:`, (epErr as any)?.message);
+        }
+      })
+    );
+
+    if (aggregatedRaw.length === 0) {
+      console.warn('[Firestore] No items retrieved from Gobiernu.cw subcategories.');
       return [];
     }
 
-    const rawPosts = await res.json();
-    if (!Array.isArray(rawPosts)) return [];
+    // Deduplicate by ID
+    const seenIds = new Set<string>();
+    const uniqueRaw: Array<{ raw: any; endpointMeta: typeof governmentEndpoints[0] }> = [];
+    for (const item of aggregatedRaw) {
+      const uniqueKey = `${item.endpointMeta.key}-${item.raw.id}`;
+      if (!seenIds.has(uniqueKey) && !seenIds.has(String(item.raw.id))) {
+        seenIds.add(uniqueKey);
+        seenIds.add(String(item.raw.id));
+        uniqueRaw.push(item);
+      }
+    }
 
-    const fetchedPosts: AdminPost[] = rawPosts.slice(0, limit).map((p: any, idx: number) => {
+    // Sort descending by publication date
+    uniqueRaw.sort((a, b) => {
+      const dateA = new Date(a.raw.date || a.raw.modified || 0).getTime();
+      const dateB = new Date(b.raw.date || b.raw.modified || 0).getTime();
+      return dateB - dateA;
+    });
+
+    // Take the top freshest posts
+    const topScanned = uniqueRaw.slice(0, limit);
+
+    const fetchedPosts: AdminPost[] = topScanned.map((entry, idx) => {
+      const p = entry.raw;
+      const ep = entry.endpointMeta;
       const title = cleanGobiernuHtml(p.title?.rendered || 'Notisia di Gobiernu di Kòrsou');
       const rawContent = cleanGobiernuHtml(p.content?.rendered || p.excerpt?.rendered || '');
-      const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 180) + '...'));
-      const media =
-        p._embedded?.['wp:featuredmedia']?.[0]?.source_url ||
-        (idx % 2 === 0 ? '/curacao-handelskade.jpg' : '/curacao-handelskade-wide.jpg');
+      const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 200) + '...'));
+
+      // If no picture exists, fallback strictly to the official Government of Curaçao logo
+      const featuredMedia = p._embedded?.['wp:featuredmedia']?.[0]?.source_url;
+      const media = featuredMedia && typeof featuredMedia === 'string' && featuredMedia.startsWith('http')
+        ? featuredMedia
+        : '/gobiernu-logo.svg';
 
       return {
-        id: `gobiernu-${p.id}`,
+        id: `gobiernu-${ep.key}-${p.id}`,
         externalId: p.id,
         title,
         content: rawContent || excerpt,
         excerpt,
         category: 'Announcement',
+        subCategory: ep.subCategory,
+        sourceType: ep.key,
         imageUrl: media,
         author: 'Gobiernu di Kòrsou',
         targetAudience: 'all',
         status: 'published',
         createdAt: p.date ? new Date(p.date).toISOString() : new Date().toISOString(),
+        updatedAt: p.modified ? new Date(p.modified).toISOString() : undefined,
         likesCount: 0,
         featured: idx === 0,
         sourceUrl: p.link || 'https://gobiernu.cw'
@@ -833,11 +893,26 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       }
     }
 
+    // Save Daily Scan Status metadata to Firestore
+    if (db) {
+      try {
+        await setDoc(doc(db, 'system', 'gobiernu_sync_status'), {
+          lastScannedAt: new Date().toISOString(),
+          totalScannedAcrossSubcategories: uniqueRaw.length,
+          savedCount: fetchedPosts.length,
+          topArticle: fetchedPosts[0]?.title || '',
+          endpointsScanned: governmentEndpoints.map((e) => e.key)
+        });
+      } catch (statusErr) {
+        console.warn('[Firestore] Notice saving sync status:', statusErr);
+      }
+    }
+
     postsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    console.log(`[Firestore] ✅ Successfully synced ${fetchedPosts.length} posts from Gobiernu.cw into Firestore database!`);
+    console.log(`[Firestore] ✅ Successfully scanned all subcategories and synced the latest ${fetchedPosts.length} posts into Firestore database!`);
     return fetchedPosts;
   } catch (err) {
-    console.warn('[Firestore] Notice: Could not sync from Gobiernu.cw in this cycle:', err);
+    console.warn('[Firestore] Notice: Multi-subcategory scan error:', err);
     return [];
   }
 }
