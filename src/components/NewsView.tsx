@@ -438,7 +438,10 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
           {featuredPost && (() => {
             const meta = getCategoryMeta(featuredPost);
             const CategoryIcon = meta.icon;
-            const isGovLogo = !featuredPost.imageUrl || featuredPost.imageUrl === '/gobiernu-logo.svg';
+            const isGovLogo =
+              !featuredPost.imageUrl ||
+              featuredPost.imageUrl.includes('gobiernu_2x.png') ||
+              featuredPost.imageUrl.includes('gobiernu-logo');
 
             return (
               <div
@@ -447,13 +450,13 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
               >
                 <div className="lg:col-span-6 relative h-64 lg:h-auto min-h-[280px] bg-slate-950 overflow-hidden flex items-center justify-center">
                   <img
-                    src={featuredPost.imageUrl || '/gobiernu-logo.svg'}
+                    src={featuredPost.imageUrl || '/gobiernu_2x.png'}
                     alt={featuredPost.title}
-                    className={`w-full h-full ${isGovLogo ? 'object-contain p-4' : 'object-cover group-hover:scale-105'} transition-transform duration-500`}
+                    className={`w-full h-full ${isGovLogo ? 'object-contain p-6 max-h-56' : 'object-cover group-hover:scale-105'} transition-transform duration-500`}
                     referrerPolicy="no-referrer"
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = '/gobiernu-logo.svg';
-                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain p-4';
+                      (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
+                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain p-6 max-h-56';
                     }}
                   />
                   <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
@@ -523,7 +526,10 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
             {listPosts.map((post) => {
               const meta = getCategoryMeta(post);
               const CategoryIcon = meta.icon;
-              const isGovLogo = !post.imageUrl || post.imageUrl === '/gobiernu-logo.svg';
+              const isGovLogo =
+                !post.imageUrl ||
+                post.imageUrl.includes('gobiernu_2x.png') ||
+                post.imageUrl.includes('gobiernu-logo');
 
               return (
                 <div
@@ -535,13 +541,13 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                     {/* Image Header with official Government Logo Fallback */}
                     <div className="relative h-44 overflow-hidden bg-slate-950 flex items-center justify-center">
                       <img
-                        src={post.imageUrl || '/gobiernu-logo.svg'}
+                        src={post.imageUrl || '/gobiernu_2x.png'}
                         alt={post.title}
-                        className={`w-full h-full ${isGovLogo ? 'object-contain p-2' : 'object-cover group-hover:scale-105'} transition-transform duration-300`}
+                        className={`w-full h-full ${isGovLogo ? 'object-contain p-4 max-h-36' : 'object-cover group-hover:scale-105'} transition-transform duration-300`}
                         referrerPolicy="no-referrer"
                         onError={(e) => {
-                          (e.currentTarget as HTMLImageElement).src = '/gobiernu-logo.svg';
-                          (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain p-2';
+                          (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
+                          (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain p-4 max-h-36';
                         }}
                       />
                       <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
@@ -607,7 +613,10 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         {selectedArticle && (() => {
           const modalMeta = getCategoryMeta(selectedArticle);
           const ModalIcon = modalMeta.icon;
-          const isGovLogo = !selectedArticle.imageUrl || selectedArticle.imageUrl === '/gobiernu-logo.svg';
+          const isGovLogo =
+            !selectedArticle.imageUrl ||
+            selectedArticle.imageUrl.includes('gobiernu_2x.png') ||
+            selectedArticle.imageUrl.includes('gobiernu-logo');
 
           return (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
@@ -620,13 +629,13 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                 {/* Header Image with Government Logo Support */}
                 <div className="relative h-56 sm:h-72 shrink-0 bg-slate-950 flex items-center justify-center">
                   <img
-                    src={selectedArticle.imageUrl || '/gobiernu-logo.svg'}
+                    src={selectedArticle.imageUrl || '/gobiernu_2x.png'}
                     alt={selectedArticle.title}
-                    className={`w-full h-full ${isGovLogo ? 'object-contain p-4' : 'object-cover'}`}
+                    className={`w-full h-full ${isGovLogo ? 'object-contain p-6 max-h-56' : 'object-cover'}`}
                     referrerPolicy="no-referrer"
                     onError={(e) => {
-                      (e.currentTarget as HTMLImageElement).src = '/gobiernu-logo.svg';
-                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain p-4';
+                      (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
+                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-contain p-6 max-h-56';
                     }}
                   />
                   {!isGovLogo && (

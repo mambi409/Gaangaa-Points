@@ -906,8 +906,9 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       return dateB - dateA;
     });
 
-    // Take the top freshest unique posts
-    const topScanned = uniqueRaw.slice(0, limit);
+    // Strictly take only the top 10 freshest unique government news posts
+    const MAX_GOV_POSTS = 10;
+    const topScanned = uniqueRaw.slice(0, MAX_GOV_POSTS);
 
     const fetchedPosts: AdminPost[] = topScanned.map((entry, idx) => {
       const p = entry.raw;
@@ -916,12 +917,12 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       const rawContent = cleanGobiernuHtml(p.content?.rendered || p.excerpt?.rendered || '');
       const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 200) + '...'));
 
-      // If no picture exists, fallback strictly to the official Government of Curaçao logo
+      // If no picture exists, fallback strictly to the official Government of Curaçao logo uploaded by the user
       const featuredMedia = p._embedded?.['wp:featuredmedia']?.[0]?.source_url;
       const media =
         featuredMedia && typeof featuredMedia === 'string' && featuredMedia.startsWith('http')
           ? featuredMedia
-          : '/gobiernu-logo.svg';
+          : 'https://gobiernu.cw/wp-content/uploads/2019/04/gobiernu_2x.png';
 
       // Canonical deterministic ID: gobiernu-${p.id}
       const canonicalId = `gobiernu-${p.id}`;
@@ -947,7 +948,9 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       };
     });
 
-    // Clean up any stale duplicate documents in Firestore before saving
+    const canonicalGovIds = new Set(fetchedPosts.map((p) => p.id));
+
+    // Clean up Firestore: Delete ANY government news post that is NOT in the latest 10 items
     if (db) {
       try {
         const existingSnap = await getDocs(collection(db, 'posts'));
@@ -955,30 +958,25 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
           for (const docSnap of existingSnap.docs) {
             const docId = docSnap.id;
             const docData = docSnap.data() as AdminPost;
-            const normDocTitle = normalizeTitleForDedupe(docData.title);
-            const normDocUrl = normalizeUrlForDedupe(docData.sourceUrl);
+            const isGovDoc =
+              docId.startsWith('gobiernu-') ||
+              docData.author === 'Gobiernu di Kòrsou' ||
+              (docData.author && docData.author.toLowerCase().includes('gobiernu')) ||
+              (docData.sourceUrl && docData.sourceUrl.includes('gobiernu.cw'));
 
-            // If this is a gobiernu post with non-canonical ID or duplicate title/link matching one of our canonical posts
-            const isMatch = fetchedPosts.some(
-              (fp) =>
-                (fp.externalId && docData.externalId === fp.externalId) ||
-                (normDocTitle && normalizeTitleForDedupe(fp.title) === normDocTitle) ||
-                (normDocUrl && normalizeUrlForDedupe(fp.sourceUrl) === normDocUrl)
-            );
-
-            // If it matches a post we are syncing, but the document ID is not canonical (e.g. gobiernu-ministers_nieuw-xxx)
-            if (isMatch && docId.startsWith('gobiernu-') && !fetchedPosts.some((fp) => fp.id === docId)) {
-              console.log(`[Firestore Cleanup] Deleting duplicate legacy post document: ${docId}`);
+            // If this is a government post and not one of the latest 10 canonical posts, delete it from Firestore
+            if (isGovDoc && !canonicalGovIds.has(docId)) {
+              console.log(`[Firestore Cleanup] 🗑️ Deleting older/extra government news post beyond top 10: ${docId} ("${docData.title?.slice(0, 40)}")`);
               await deleteDoc(doc(db, 'posts', docId)).catch(() => {});
             }
           }
         }
       } catch (cleanErr) {
-        console.warn('[Firestore Cleanup] Notice checking duplicate documents:', cleanErr);
+        console.warn('[Firestore Cleanup] Notice cleaning extra government posts:', cleanErr);
       }
     }
 
-    // Persist all 10 canonical posts to Firestore and update in-memory cache
+    // Persist all 10 canonical posts to Firestore (ensures availability for Vercel and all clients)
     for (const post of fetchedPosts) {
       if (db) {
         try {
@@ -989,8 +987,14 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       }
     }
 
-    // Update in-memory postsData: replace or prepend, then deduplicate
-    const nonGovPosts = postsData.filter((p) => !p.id?.startsWith('gobiernu-') && p.category !== 'Announcement');
+    // Update in-memory postsData: retain non-government posts (promos/updates) + strictly the latest 10 government posts
+    const nonGovPosts = postsData.filter(
+      (p) =>
+        !p.id?.startsWith('gobiernu-') &&
+        p.author !== 'Gobiernu di Kòrsou' &&
+        !p.author?.toLowerCase().includes('gobiernu') &&
+        !p.sourceUrl?.includes('gobiernu.cw')
+    );
     const combinedPosts = [...fetchedPosts, ...nonGovPosts];
     postsData.length = 0;
     postsData.push(...deduplicatePostsList(combinedPosts));
@@ -1011,7 +1015,7 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       }
     }
 
-    console.log(`[Firestore] ✅ Successfully scanned all subcategories without duplicates! Synced ${fetchedPosts.length} posts into Firestore database.`);
+    console.log(`[Firestore] ✅ Scanned all subcategories! Stored strictly the top ${fetchedPosts.length} government posts in Firebase Firestore.`);
     return fetchedPosts;
   } catch (err) {
     console.warn('[Firestore] Notice: Multi-subcategory scan error:', err);

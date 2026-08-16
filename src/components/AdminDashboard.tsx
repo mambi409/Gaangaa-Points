@@ -2890,11 +2890,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                             <div className="flex items-start gap-2.5">
                               <img
-                                src={item.imageUrl || '/gobiernu-logo.svg'}
+                                src={item.imageUrl || '/gobiernu_2x.png'}
                                 alt=""
                                 className="w-12 h-12 rounded-lg bg-slate-900 object-cover shrink-0 border border-slate-800"
                                 onError={(e) => {
-                                  (e.currentTarget as HTMLImageElement).src = '/gobiernu-logo.svg';
+                                  (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
                                   (e.currentTarget as HTMLImageElement).className = 'w-12 h-12 rounded-lg bg-slate-900 object-contain p-1 shrink-0 border border-slate-800';
                                 }}
                               />

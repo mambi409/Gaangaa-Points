@@ -2291,16 +2291,16 @@ async function startServer() {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
     });
 
-    // Schedule automatic scan every 6 hours to keep the latest 10 news items freshly synced in Firestore
-    const SIX_HOURS_MS = 6 * 60 * 60 * 1000;
+    // Schedule automatic scan every 30 minutes to keep strictly the latest 10 news items freshly synced in Firestore
+    const THIRTY_MINUTES_MS = 30 * 60 * 1000;
     setInterval(async () => {
       try {
-        console.log('[Scheduler] ⏰ Running scheduled Gobiernu.cw multi-subcategory news scan...');
+        console.log('[Scheduler] ⏰ Running scheduled Gobiernu.cw 30-minute news scan (strictly 10 latest items)...');
         await syncGobiernuToFirestore(10);
       } catch (scheduleErr) {
         console.warn('[Scheduler] Scheduled Gobiernu news scan notice:', scheduleErr);
       }
-    }, SIX_HOURS_MS);
+    }, THIRTY_MINUTES_MS);
   }
 }
 
