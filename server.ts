@@ -1481,18 +1481,34 @@ app.post('/api/admin/posts/create', async (req, res) => {
 
     await persistPost(newPost);
 
-    // If published, also send as a notification so it appears immediately across user alerts
+    // If published, also send as a notification according to push policies:
+    // 1. Promo items -> title prefixed with "PROMO PUSH: <Title>"
+    // 2. News/Announcements -> only sent if published on the SAME DAY, with title "NEWS PUSH: <Title>"
     if (newPost.status === 'published') {
-      const notif: NotificationMessage = {
-        id: `notif-post-${Date.now()}`,
-        title: `📢 ${newPost.title}`,
-        body: newPost.content.slice(0, 140) + (newPost.content.length > 140 ? '...' : ''),
-        type: 'promo',
-        timestamp: new Date().toISOString(),
-        read: false,
-        targetRole: (newPost.targetAudience as any) || 'all'
-      };
-      await persistNotification(notif);
+      const isPromo = newPost.category === 'Promotion' || newPost.category === 'Reward Alert';
+      const todayYMD = new Date().toISOString().slice(0, 10);
+      const postDateYMD = new Date(newPost.createdAt).toISOString().slice(0, 10);
+      const isSameDay = postDateYMD === todayYMD;
+
+      let pushTitle = '';
+      if (isPromo) {
+        pushTitle = `PROMO PUSH: ${newPost.title.slice(0, 65)}${newPost.title.length > 65 ? '...' : ''}`;
+      } else if (isSameDay) {
+        pushTitle = `NEWS PUSH: ${newPost.title.slice(0, 65)}${newPost.title.length > 65 ? '...' : ''}`;
+      }
+
+      if (pushTitle) {
+        const notif: NotificationMessage = {
+          id: `notif-post-${Date.now()}`,
+          title: pushTitle,
+          body: newPost.content.slice(0, 140) + (newPost.content.length > 140 ? '...' : ''),
+          type: isPromo ? 'promo' : 'system',
+          timestamp: new Date().toISOString(),
+          read: false,
+          targetRole: (newPost.targetAudience as any) || 'all'
+        };
+        await persistNotification(notif);
+      }
     }
 
     const log: SystemAuditLog = {
@@ -1693,13 +1709,18 @@ app.post('/api/admin/posts/import-gobiernu', async (req, res) => {
         await persistPost(item);
         importedCount++;
 
-        // Send a notification alert to users
-        if (publishNotifications) {
+        // Send a notification alert to users ONLY if news item is from the SAME DAY
+        const todayYMD = new Date().toISOString().slice(0, 10);
+        const postDateYMD = new Date(item.createdAt).toISOString().slice(0, 10);
+        const isSameDay = postDateYMD === todayYMD;
+
+        if (publishNotifications && isSameDay) {
+          const cleanTitle = item.title.trim();
           const notif: NotificationMessage = {
             id: `notif-gobiernu-${Date.now()}-${importedCount}`,
-            title: `🇨🇼 Notisia: ${item.title.slice(0, 48)}${item.title.length > 48 ? '...' : ''}`,
+            title: `NEWS PUSH: ${cleanTitle.slice(0, 65)}${cleanTitle.length > 65 ? '...' : ''}`,
             body: item.excerpt ? item.excerpt.slice(0, 140) : item.content.slice(0, 140),
-            type: 'promo',
+            type: 'system',
             timestamp: new Date().toISOString(),
             read: false,
             targetRole: 'all'

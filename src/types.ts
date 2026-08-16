@@ -125,7 +125,7 @@ export interface NotificationMessage {
   id: string;
   title: string;
   body: string;
-  type: 'earn' | 'redeem' | 'promo' | 'tier' | 'navigation';
+  type: 'earn' | 'redeem' | 'promo' | 'tier' | 'navigation' | 'system' | 'news';
   timestamp: string;
   read: boolean;
   storeId?: string;

@@ -977,12 +977,34 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
     }
 
     // Persist all 10 canonical posts to Firestore (ensures availability for Vercel and all clients)
+    const todayYMD = new Date().toISOString().slice(0, 10);
     for (const post of fetchedPosts) {
       if (db) {
         try {
           await setDoc(doc(db, 'posts', post.id), post);
         } catch (dbErr) {
           console.error(`[Firestore] Error persisting post ${post.id} to Firestore:`, dbErr);
+        }
+      }
+
+      // Check if post is published on the SAME DAY
+      const postDateYMD = new Date(post.createdAt).toISOString().slice(0, 10);
+      if (postDateYMD === todayYMD) {
+        const notifId = `notif-news-${post.id}`;
+        const alreadyExists = notificationsData.some((n) => n.id === notifId);
+        if (!alreadyExists) {
+          const cleanTitle = post.title.trim();
+          const notif: NotificationMessage = {
+            id: notifId,
+            title: `NEWS PUSH: ${cleanTitle.slice(0, 70)}${cleanTitle.length > 70 ? '...' : ''}`,
+            body: post.excerpt ? post.excerpt.slice(0, 140) : post.content.slice(0, 140),
+            type: 'system',
+            timestamp: post.createdAt || new Date().toISOString(),
+            read: false,
+            targetRole: 'all'
+          };
+          await persistNotification(notif);
+          console.log(`[Notification Engine] 📰 Sent same-day NEWS PUSH notification for: "${cleanTitle.slice(0, 45)}"`);
         }
       }
     }

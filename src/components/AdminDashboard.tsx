@@ -51,7 +51,12 @@ import {
   SlidersHorizontal,
   ChevronDown,
   Download,
-  FileSpreadsheet
+  FileSpreadsheet,
+  Tag,
+  Megaphone,
+  Newspaper,
+  Rss,
+  Bell
 } from 'lucide-react';
 import {
   AdminTask,
@@ -90,8 +95,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const { language } = useLanguage();
   const isEs = language === 'es';
 
-  // Primary 200px Sidebar Navigation State
-  const [adminMenu, setAdminMenu] = useState<'dashboard' | 'posts' | 'users'>('dashboard');
+  // Primary Sidebar Navigation State (separated into internal promo & external news)
+  const [adminMenu, setAdminMenu] = useState<'dashboard' | 'internal-promo' | 'external-news' | 'users' | 'posts'>('dashboard');
+
+  // External Government News subcategory filter and scanning state
+  const [govSubcategoryFilter, setGovSubcategoryFilter] = useState<string>('all');
+  const [isScanningAllGobiernu, setIsScanningAllGobiernu] = useState<boolean>(false);
 
   // Secondary sub-tab for dashboard view
   const [dashboardSubTab, setDashboardSubTab] = useState<'overview' | 'tasks' | 'stores' | 'broadcast' | 'audit'>('overview');
@@ -696,6 +705,24 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     );
   };
 
+  const handleTriggerScanAllGobiernu = async () => {
+    setIsScanningAllGobiernu(true);
+    try {
+      const res = await fetch('/api/gobiernu/scan-all', { method: 'POST' });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Scan complete! Synced ${data.savedCount || 10} latest government news items to Firestore.`, 'success');
+        fetchAdminData();
+      } else {
+        showToast(data.error || 'Failed to scan government news', 'error');
+      }
+    } catch (err) {
+      showToast('Error connecting to government news scanner', 'error');
+    } finally {
+      setIsScanningAllGobiernu(false);
+    }
+  };
+
   // ================= ONBOARD STORE HANDLER =================
   const handleAddStore = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -786,7 +813,50 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     return matchesSearch && matchesRole && matchesTier && matchesStatus;
   });
 
-  // Filtered Posts List
+  // Separation between Internal Promos/News vs External Government News
+  const internalPosts = posts.filter(
+    (p) =>
+      !p.id.startsWith('gobiernu-') &&
+      p.author !== 'Gobiernu di Kòrsou' &&
+      !p.author?.toLowerCase().includes('gobiernu') &&
+      !p.sourceUrl?.includes('gobiernu.cw')
+  );
+
+  const externalGovPosts = posts.filter(
+    (p) =>
+      p.id.startsWith('gobiernu-') ||
+      p.author === 'Gobiernu di Kòrsou' ||
+      p.author?.toLowerCase().includes('gobiernu') ||
+      p.sourceUrl?.includes('gobiernu.cw')
+  );
+
+  // Filtered Internal Promos List
+  const filteredInternalPosts = internalPosts.filter((p) => {
+    const q = postSearchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      p.title.toLowerCase().includes(q) ||
+      p.content.toLowerCase().includes(q) ||
+      p.category.toLowerCase().includes(q) ||
+      p.author.toLowerCase().includes(q);
+    const matchesCategory = postCategoryFilter === 'all' || p.category === postCategoryFilter;
+    const matchesStatus = postStatusFilter === 'all' || p.status === postStatusFilter;
+    return matchesSearch && matchesCategory && matchesStatus;
+  });
+
+  // Filtered External Government News List
+  const filteredExternalGovPosts = externalGovPosts.filter((p) => {
+    const q = postSearchQuery.toLowerCase();
+    const matchesSearch =
+      !q ||
+      p.title.toLowerCase().includes(q) ||
+      p.content.toLowerCase().includes(q) ||
+      (p.subCategory && p.subCategory.toLowerCase().includes(q));
+    const matchesSub = govSubcategoryFilter === 'all' || (p.subCategory || 'Notisia') === govSubcategoryFilter;
+    return matchesSearch && matchesSub;
+  });
+
+  // Generic fallback filtered posts
   const filteredPosts = posts.filter((p) => {
     const q = postSearchQuery.toLowerCase();
     const matchesSearch =
@@ -867,26 +937,45 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               <span className="truncate">Dashboard</span>
             </button>
 
-            {/* 2. POSTS MENU */}
+            {/* 2. INTERNAL PROMO & APP NEWS */}
             <button
-              id="admin-menu-posts"
-              onClick={() => setAdminMenu('posts')}
+              id="admin-menu-internal-promo"
+              onClick={() => setAdminMenu('internal-promo')}
               className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
-                adminMenu === 'posts'
+                adminMenu === 'internal-promo' || adminMenu === 'posts'
                   ? 'bg-indigo-600 text-white shadow-md shadow-indigo-600/30'
                   : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
               }`}
             >
               <div className="flex items-center gap-3 truncate">
-                <FileText className="w-4 h-4 shrink-0" />
-                <span className="truncate">Posts</span>
+                <Tag className="w-4 h-4 shrink-0 text-amber-400" />
+                <span className="truncate">Internal Promos</span>
               </div>
               <span className="px-1.5 py-0.5 text-[10px] rounded bg-slate-800 text-slate-300 border border-slate-700">
-                {posts.length}
+                {internalPosts.length}
               </span>
             </button>
 
-            {/* 3. MEMBERS ACCOUNTS MENU */}
+            {/* 3. EXTERNAL GOVERNMENT NEWS (GOBINERNU.CW) */}
+            <button
+              id="admin-menu-external-news"
+              onClick={() => setAdminMenu('external-news')}
+              className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+                adminMenu === 'external-news'
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                  : 'text-slate-400 hover:text-slate-100 hover:bg-slate-800/60'
+              }`}
+            >
+              <div className="flex items-center gap-3 truncate">
+                <Globe className="w-4 h-4 shrink-0 text-blue-400" />
+                <span className="truncate">External News</span>
+              </div>
+              <span className="px-1.5 py-0.5 text-[10px] rounded bg-blue-900/60 text-blue-300 border border-blue-700/60 font-bold">
+                10 Live
+              </span>
+            </button>
+
+            {/* 4. MEMBERS ACCOUNTS MENU */}
             <button
               id="admin-menu-users"
               onClick={() => {
@@ -901,7 +990,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
             >
               <div className="flex items-center gap-3 truncate">
                 <Users className="w-4 h-4 shrink-0" />
-                <span className="truncate">Members Accounts</span>
+                <span className="truncate">Members</span>
               </div>
               <span className="px-1.5 py-0.5 text-[10px] rounded bg-slate-800 text-slate-300 border border-slate-700">
                 {registeredUsers.length}
@@ -1353,58 +1442,68 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         )}
 
         {/* ============================================================ */}
-        {/* VIEW 2: POSTS (CREATE & MANAGE POSTS)                        */}
+        {/* VIEW 2: INTERNAL PROMO & NEWS MANAGER                        */}
         {/* ============================================================ */}
-        {adminMenu === 'posts' && (
+        {(adminMenu === 'internal-promo' || adminMenu === 'posts') && (
           <div className="space-y-6">
-            {/* Posts Header Bar */}
-            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-4 border-b border-slate-800">
+            {/* View Switcher Sub-Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+              <button
+                onClick={() => setAdminMenu('internal-promo')}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold shadow-md shadow-indigo-600/30 transition"
+              >
+                <Tag className="w-3.5 h-3.5 text-amber-300" />
+                <span>Internal Promos & App News</span>
+                <span className="px-1.5 py-0.5 rounded bg-black/30 text-[10px]">{internalPosts.length}</span>
+              </button>
+
+              <button
+                onClick={() => setAdminMenu('external-news')}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold border border-slate-800 transition"
+              >
+                <Globe className="w-3.5 h-3.5 text-blue-400" />
+                <span>External Government News (gobiernu.cw)</span>
+                <span className="px-1.5 py-0.5 rounded bg-blue-900/40 text-blue-300 border border-blue-800/50 text-[10px]">10 Live</span>
+              </button>
+            </div>
+
+            {/* Header Bar */}
+            <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 pb-2">
               <div>
                 <div className="flex items-center gap-2.5">
-                  <h1 className="text-2xl font-bold text-white tracking-tight">Posts & Announcements</h1>
-                  <span className="px-2.5 py-0.5 rounded-full bg-blue-500/20 border border-blue-500/30 text-blue-300 text-[11px] font-semibold flex items-center gap-1">
-                    <Globe className="w-3 h-3 text-blue-400" />
-                    gobiernu.cw
+                  <h1 className="text-2xl font-bold text-white tracking-tight">Internal Promotions & News</h1>
+                  <span className="px-2.5 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/30 text-amber-300 text-[11px] font-semibold flex items-center gap-1">
+                    <Tag className="w-3 h-3 text-amber-400" />
+                    Network & Merchant Promos
                   </span>
                 </div>
                 <p className="text-sm text-slate-400 mt-1">
-                  Create custom posts, manage community promotions, or grab the latest 10 news updates from Gobiernu di Kòrsou.
+                  Create merchant promotions, store discounts, and loyalty news with automated <span className="text-amber-300 font-mono font-semibold">"PROMO PUSH"</span> alerts.
                 </p>
               </div>
 
               <div className="flex flex-wrap items-center gap-2.5">
                 <button
-                  id="admin-grab-gobiernu-news-btn"
-                  onClick={handleOpenGobiernuNews}
-                  disabled={isImportingGobiernu}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-gradient-to-r from-blue-600 via-indigo-600 to-blue-700 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-semibold shadow-lg shadow-blue-600/25 transition cursor-pointer"
-                >
-                  <Globe className="w-4 h-4 text-blue-200" />
-                  <span>Grab 10 Nieuws (gobiernu.cw)</span>
-                  <span className="px-1.5 py-0.5 bg-white/20 rounded text-[10px] uppercase tracking-wider font-bold">10 Live</span>
-                </button>
-
-                <button
                   id="admin-create-post-btn"
                   onClick={handleOpenCreatePost}
-                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-white text-sm font-semibold border border-slate-700 transition cursor-pointer"
+                  className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold shadow-lg shadow-indigo-600/30 transition cursor-pointer"
                 >
                   <Plus className="w-4 h-4" />
-                  <span>Create New Post</span>
+                  <span>Create New Promo</span>
                 </button>
               </div>
             </div>
 
             {/* Filter Toolbar */}
-            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+            <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-slate-900/60 p-3 rounded-xl border border-slate-800">
               <div className="relative w-full sm:w-80">
                 <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
                 <input
                   type="text"
                   value={postSearchQuery}
                   onChange={(e) => setPostSearchQuery(e.target.value)}
-                  placeholder="Search posts..."
-                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                  placeholder="Search promos by title, merchant, author..."
+                  className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-white text-sm focus:border-indigo-500 focus:outline-none"
                 />
               </div>
 
@@ -1412,7 +1511,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={postCategoryFilter}
                   onChange={(e) => setPostCategoryFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 text-xs focus:border-indigo-500 focus:outline-none"
+                  className="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 text-xs focus:border-indigo-500 focus:outline-none"
                 >
                   <option value="all">All Categories</option>
                   <option value="Promotion">Promotion</option>
@@ -1425,7 +1524,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <select
                   value={postStatusFilter}
                   onChange={(e) => setPostStatusFilter(e.target.value)}
-                  className="px-3 py-2 rounded-lg bg-slate-900 border border-slate-800 text-slate-300 text-xs focus:border-indigo-500 focus:outline-none"
+                  className="px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-300 text-xs focus:border-indigo-500 focus:outline-none"
                 >
                   <option value="all">All Statuses</option>
                   <option value="published">Published Only</option>
@@ -1434,24 +1533,25 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
               </div>
             </div>
 
-            {/* Posts Grid */}
+            {/* Promos Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-              {filteredPosts.map((post) => (
+              {filteredInternalPosts.map((post) => (
                 <div
                   key={post.id}
-                  className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden flex flex-col justify-between hover:border-slate-700 transition"
+                  className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden flex flex-col justify-between hover:border-slate-700 transition shadow-sm"
                 >
                   <div>
                     {post.imageUrl && (
-                      <div className="relative h-44 w-full bg-slate-800 overflow-hidden">
+                      <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
                         <img
                           src={post.imageUrl}
                           alt={post.title}
                           className="w-full h-full object-cover"
                           referrerPolicy="no-referrer"
                         />
-                        <div className="absolute top-3 left-3 flex items-center gap-1.5">
-                          <span className="px-2.5 py-1 rounded-md bg-slate-900/80 backdrop-blur text-xs font-semibold text-white border border-slate-700">
+                        <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
+                          <span className="px-2.5 py-1 rounded-md bg-slate-900/90 backdrop-blur text-xs font-semibold text-white border border-slate-700 flex items-center gap-1">
+                            <Tag className="w-3 h-3 text-amber-400" />
                             {post.category}
                           </span>
                           {post.featured && (
@@ -1480,20 +1580,11 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                       <h3 className="text-base font-bold text-white line-clamp-2 leading-snug">{post.title}</h3>
                       <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">{post.content}</p>
 
-                      {post.sourceUrl && (
-                        <div className="pt-1">
-                          <a
-                            href={post.sourceUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition font-medium bg-blue-950/40 px-2 py-0.5 rounded border border-blue-900/50"
-                          >
-                            <Globe className="w-3 h-3" />
-                            <span>Read on gobiernu.cw</span>
-                            <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-70" />
-                          </a>
-                        </div>
-                      )}
+                      <div className="pt-2 flex items-center gap-2">
+                        <span className="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-400 border border-slate-700/60">
+                          Audience: {post.targetAudience}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
@@ -1501,21 +1592,21 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="flex items-center gap-1">
                       <button
                         onClick={() => setPreviewPost(post)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition cursor-pointer"
                         title="Preview Post"
                       >
                         <Eye className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleOpenEditPost(post)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 transition"
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-indigo-300 transition cursor-pointer"
                         title="Edit Post"
                       >
                         <Edit3 className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeletePost(post.id)}
-                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition"
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition cursor-pointer"
                         title="Delete Post"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -1524,7 +1615,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                     <button
                       onClick={() => handleTogglePostStatus(post)}
-                      className={`px-2.5 py-1 rounded text-xs font-semibold transition ${
+                      className={`px-2.5 py-1 rounded text-xs font-semibold transition cursor-pointer ${
                         post.status === 'published'
                           ? 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                           : 'bg-emerald-600 hover:bg-emerald-500 text-white'
@@ -1536,16 +1627,246 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 </div>
               ))}
 
-              {filteredPosts.length === 0 && (
+              {filteredInternalPosts.length === 0 && (
                 <div className="col-span-full p-12 text-center bg-slate-900/50 rounded-xl border border-slate-800 space-y-3">
-                  <FileText className="w-8 h-8 text-slate-500 mx-auto" />
-                  <p className="text-sm text-slate-300 font-semibold">No posts found</p>
-                  <p className="text-xs text-slate-500">Create your first announcement or promotion.</p>
+                  <Tag className="w-8 h-8 text-slate-500 mx-auto" />
+                  <p className="text-sm text-slate-300 font-semibold">No internal promo posts found</p>
+                  <p className="text-xs text-slate-500">Create a promotional campaign or customer announcement.</p>
                   <button
                     onClick={handleOpenCreatePost}
-                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold inline-block"
+                    className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-semibold inline-block cursor-pointer"
                   >
-                    + Create Post
+                    + Create Promo
+                  </button>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ============================================================ */}
+        {/* VIEW 3: EXTERNAL GOVERNMENT NEWS (GOBINERNU.CW)              */}
+        {/* ============================================================ */}
+        {adminMenu === 'external-news' && (
+          <div className="space-y-6">
+            {/* View Switcher Sub-Tabs */}
+            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
+              <button
+                onClick={() => setAdminMenu('internal-promo')}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold border border-slate-800 transition"
+              >
+                <Tag className="w-3.5 h-3.5 text-amber-400" />
+                <span>Internal Promos & App News</span>
+                <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 text-[10px]">{internalPosts.length}</span>
+              </button>
+
+              <button
+                onClick={() => setAdminMenu('external-news')}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold shadow-md shadow-blue-600/30 transition"
+              >
+                <Globe className="w-3.5 h-3.5 text-blue-200" />
+                <span>External Government News (gobiernu.cw)</span>
+                <span className="px-1.5 py-0.5 rounded bg-black/30 text-[10px]">10 Live</span>
+              </button>
+            </div>
+
+            {/* Top Sync & Health Status Banner */}
+            <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-950/60 via-slate-900 to-indigo-950/40 border border-blue-900/40 space-y-3">
+              <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h1 className="text-xl font-bold text-white tracking-tight">Official Government of Curaçao News</h1>
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 text-[10px] font-bold flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      30-Min Auto-Sync Active
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Multi-subcategory crawler actively updates every 30 minutes. Strictly stored in Firebase Firestore (max 10 items) and published with <span className="text-blue-300 font-mono font-semibold">"NEWS PUSH"</span> (same-day news only).
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  <button
+                    onClick={handleTriggerScanAllGobiernu}
+                    disabled={isScanningAllGobiernu}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold shadow-md transition cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isScanningAllGobiernu ? 'animate-spin' : ''}`} />
+                    <span>{isScanningAllGobiernu ? 'Scanning Subcategories...' : 'Scan All Subcategories Now'}</span>
+                  </button>
+
+                  <button
+                    onClick={handleOpenGobiernuNews}
+                    disabled={isImportingGobiernu}
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition cursor-pointer"
+                  >
+                    <Layers className="w-3.5 h-3.5 text-blue-400" />
+                    <span>Manage Sync Modal</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Status Chips */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-800/80 text-xs">
+                <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
+                  <span className="text-slate-400 text-[11px]">Storage Limit</span>
+                  <span className="font-bold text-white font-mono">10 Articles Max</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
+                  <span className="text-slate-400 text-[11px]">Firestore Cloud</span>
+                  <span className="font-bold text-emerald-400 flex items-center gap-1">
+                    <Database className="w-3 h-3" />
+                    Synced
+                  </span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
+                  <span className="text-slate-400 text-[11px]">Push Policy</span>
+                  <span className="font-bold text-blue-300 font-mono text-[10px]">NEWS PUSH (Same Day)</span>
+                </div>
+                <div className="p-2 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-between">
+                  <span className="text-slate-400 text-[11px]">Source Portal</span>
+                  <a
+                    href="https://gobiernu.cw"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="font-bold text-blue-400 hover:underline flex items-center gap-1"
+                  >
+                    <span>gobiernu.cw</span>
+                    <ExternalLink className="w-2.5 h-2.5" />
+                  </a>
+                </div>
+              </div>
+            </div>
+
+            {/* Subcategory Filter Tabs */}
+            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+              {[
+                { id: 'all', label: 'All Subcategories' },
+                { id: 'Notisia General', label: 'Notisia General' },
+                { id: 'Notisia di Ministernan', label: 'Ministernan' },
+                { id: 'Notisia di Konseho di Minister', label: 'Konseho di Minister' },
+                { id: 'Breaking News', label: 'Breaking News' },
+                { id: 'Óptima Forma', label: 'Óptima Forma' },
+                { id: 'Publikashonnan', label: 'Publikashonnan' }
+              ].map((tab) => (
+                <button
+                  key={tab.id}
+                  onClick={() => setGovSubcategoryFilter(tab.id)}
+                  className={`px-3 py-1.5 rounded-lg whitespace-nowrap font-medium transition cursor-pointer ${
+                    govSubcategoryFilter === tab.id
+                      ? 'bg-blue-600 text-white font-bold'
+                      : 'bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 border border-slate-800'
+                  }`}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* External News Grid (Strictly 10 Latest) */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredExternalGovPosts.map((post, idx) => {
+                const todayYMD = new Date().toISOString().slice(0, 10);
+                const postDateYMD = new Date(post.createdAt).toISOString().slice(0, 10);
+                const isSameDay = postDateYMD === todayYMD;
+
+                return (
+                  <div
+                    key={post.id}
+                    className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden flex flex-col justify-between hover:border-blue-900/60 transition shadow-sm"
+                  >
+                    <div>
+                      {/* Cover Style Image */}
+                      <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
+                        <img
+                          src={post.imageUrl || '/gobiernu_2x.png'}
+                          alt={post.title}
+                          className="w-full h-full object-cover"
+                          referrerPolicy="no-referrer"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
+                            (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
+                          }}
+                        />
+                        <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
+                          <span className="px-2 py-0.5 rounded-md bg-blue-900/90 text-blue-200 text-[10px] font-bold border border-blue-700/60">
+                            #{idx + 1}
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md bg-slate-950/80 backdrop-blur text-[10px] font-bold text-slate-200 border border-slate-700">
+                            {post.subCategory || 'Notisia'}
+                          </span>
+                        </div>
+
+                        {isSameDay && (
+                          <span className="absolute top-3 right-3 px-2 py-0.5 rounded-md bg-emerald-500/90 text-white text-[10px] font-black uppercase tracking-wider shadow">
+                            🔔 NEWS PUSH
+                          </span>
+                        )}
+                      </div>
+
+                      <div className="p-4 space-y-2">
+                        <div className="flex items-center justify-between text-xs text-slate-400">
+                          <span className="font-semibold text-blue-400 flex items-center gap-1">
+                            <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                            Gobiernu di Kòrsou
+                          </span>
+                          <span>{new Date(post.createdAt).toLocaleDateString()}</span>
+                        </div>
+
+                        <h3 className="text-base font-bold text-white line-clamp-2 leading-snug">{post.title}</h3>
+                        <p className="text-xs text-slate-300 line-clamp-3 leading-relaxed">{post.content || post.excerpt}</p>
+
+                        {post.sourceUrl && (
+                          <div className="pt-1">
+                            <a
+                              href={post.sourceUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-[11px] text-blue-400 hover:text-blue-300 transition font-medium bg-blue-950/40 px-2.5 py-1 rounded-lg border border-blue-900/50"
+                            >
+                              <Globe className="w-3 h-3" />
+                              <span>View on gobiernu.cw</span>
+                              <ExternalLink className="w-2.5 h-2.5 ml-0.5 opacity-70" />
+                            </a>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="p-4 pt-2 border-t border-slate-800/80 flex items-center justify-between gap-2">
+                      <button
+                        onClick={() => setPreviewPost(post)}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Read Article</span>
+                      </button>
+
+                      <button
+                        onClick={() => handleDeletePost(post.id)}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-rose-500/20 text-rose-400 transition cursor-pointer"
+                        title="Delete from list"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+
+              {filteredExternalGovPosts.length === 0 && (
+                <div className="col-span-full p-12 text-center bg-slate-900/50 rounded-xl border border-slate-800 space-y-3">
+                  <Globe className="w-8 h-8 text-blue-400 mx-auto" />
+                  <p className="text-sm text-slate-300 font-semibold">No government news items found in this filter</p>
+                  <p className="text-xs text-slate-500">Run a multi-subcategory scan to pull the latest 10 articles.</p>
+                  <button
+                    onClick={handleTriggerScanAllGobiernu}
+                    disabled={isScanningAllGobiernu}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-xs font-bold inline-flex items-center gap-2 cursor-pointer"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${isScanningAllGobiernu ? 'animate-spin' : ''}`} />
+                    <span>Scan Gobiernu.cw Now</span>
                   </button>
                 </div>
               )}
@@ -2655,6 +2976,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                   <label htmlFor="post-featured-chk" className="text-xs text-slate-300 font-medium">
                     Pin as Featured Post at Top of Feed
                   </label>
+                </div>
+
+                {/* Notification Title Preview */}
+                <div className="p-3 rounded-xl bg-slate-950 border border-slate-800 text-xs flex items-start gap-2.5">
+                  <Bell className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" />
+                  <div className="space-y-0.5">
+                    <p className="font-semibold text-slate-200">
+                      Automated Push Notification Title:
+                    </p>
+                    <p className="font-mono text-[11px] text-amber-300">
+                      {postCategory === 'Promotion' || postCategory === 'Reward Alert' ? (
+                        <span>🏷️ PROMO PUSH: {postTitle || 'Merchant Promotion Title'}</span>
+                      ) : (
+                        <span>📰 NEWS PUSH: {postTitle || 'News Announcement Title'}</span>
+                      )}
+                    </p>
+                    <p className="text-[10px] text-slate-500">
+                      Promotions generate "PROMO PUSH" alerts across all member devices.
+                    </p>
+                  </div>
                 </div>
 
                 <div className="flex items-center gap-3 pt-3">
