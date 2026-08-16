@@ -1770,22 +1770,32 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 const todayYMD = new Date().toISOString().slice(0, 10);
                 const postDateYMD = new Date(post.createdAt).toISOString().slice(0, 10);
                 const isSameDay = postDateYMD === todayYMD;
+                const isGovLogo =
+                  !post.imageUrl ||
+                  post.imageUrl.includes('gobiernu_2x.png') ||
+                  post.imageUrl.includes('gobiernu-logo') ||
+                  post.imageUrl.includes('emblem');
+
                 return (
                   <div
                     key={post.id}
                     className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden flex flex-col justify-between hover:border-blue-900/60 transition shadow-sm"
                   >
                     <div>
-                      {/* Image Header with cover style */}
-                      <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
+                      {/* Image Header: Full cover for photos, neat margin for government logo only */}
+                      <div className={`relative h-44 w-full bg-slate-950 overflow-hidden ${isGovLogo ? 'flex items-center justify-center p-6' : ''}`}>
                         <img
                           src={post.imageUrl || '/gobiernu_2x.png'}
                           alt={post.title}
-                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                          className={
+                            isGovLogo
+                              ? 'max-h-28 max-w-[190px] object-contain mx-auto transition-transform duration-300 group-hover:scale-105'
+                              : 'w-full h-full object-cover transition-transform duration-300 group-hover:scale-105'
+                          }
                           referrerPolicy="no-referrer"
                           onError={(e) => {
                             (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                            (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
+                            (e.currentTarget as HTMLImageElement).className = 'max-h-28 max-w-[190px] object-contain mx-auto';
                           }}
                         />
                         <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
@@ -3038,20 +3048,28 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 <X className="w-4 h-4" />
               </button>
 
-              {previewPost.imageUrl && (
-                <div className="relative h-48 w-full">
-                  <img
-                    src={previewPost.imageUrl}
-                    alt={previewPost.title}
-                    className="w-full h-full object-cover"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
-                  <span className="absolute bottom-3 left-4 px-2.5 py-1 rounded bg-indigo-600 text-white text-xs font-bold">
-                    {previewPost.category}
-                  </span>
-                </div>
-              )}
+              {previewPost.imageUrl && (() => {
+                const isGov =
+                  previewPost.imageUrl.includes('gobiernu_2x.png') ||
+                  previewPost.imageUrl.includes('gobiernu-logo') ||
+                  previewPost.imageUrl.includes('emblem');
+                return (
+                  <div className={`relative h-48 w-full bg-slate-950 overflow-hidden ${isGov ? 'flex items-center justify-center p-6' : ''}`}>
+                    <img
+                      src={previewPost.imageUrl}
+                      alt={previewPost.title}
+                      className={isGov ? 'max-h-32 max-w-[200px] object-contain mx-auto' : 'w-full h-full object-cover'}
+                      referrerPolicy="no-referrer"
+                    />
+                    {!isGov && (
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-900 via-transparent to-transparent" />
+                    )}
+                    <span className="absolute bottom-3 left-4 px-2.5 py-1 rounded bg-indigo-600 text-white text-xs font-bold shadow-xs">
+                      {previewPost.category}
+                    </span>
+                  </div>
+                );
+              })()}
 
               <div className="p-5 space-y-3">
                 <div className="text-xs text-slate-400 flex items-center justify-between">

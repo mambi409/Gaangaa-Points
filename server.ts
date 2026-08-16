@@ -981,6 +981,9 @@ app.get('/api/merchant/stats', (req, res) => {
   const earnTxCount = storeTxs.filter((t) => t.type === 'earn').length + 48;
   const averagePointsPerSale = Math.round(totalPointsRewardedAllTime / Math.max(1, earnTxCount));
 
+  // Points reserve balance for this merchant store
+  const storePointsBalance = store.pointsBalance !== undefined ? store.pointsBalance : 14500;
+
   // Points by source breakdown
   const posSalesPts = Math.round(totalPointsRewardedAllTime * 0.78);
   const qrWalkinPts = Math.round(totalPointsRewardedAllTime * 0.14);
@@ -995,6 +998,7 @@ app.get('/api/merchant/stats', (req, res) => {
   const stats: MerchantStats = {
     storeId: store.id,
     storeName: store.name,
+    pointsBalance: storePointsBalance,
     todayPointsIssued: issuedToday + 1250,
     todayPointsRedeemed: redeemedToday + 450,
     todayTransactions: storeTxs.length + 18,
@@ -1009,7 +1013,226 @@ app.get('/api/merchant/stats', (req, res) => {
     pointsBySource
   };
 
-  res.json({ stats, storeRewards: rewardsData.filter((r) => r.storeId === store.id), store });
+  const merchantPosts = deduplicatePostsList(postsData).filter(
+    (p) =>
+      p.storeId === store.id ||
+      p.author?.toLowerCase().includes(store.name.toLowerCase()) ||
+      p.category === 'Promotion' ||
+      p.category === 'Reward Alert'
+  );
+
+  res.json({
+    stats,
+    storeRewards: rewardsData.filter((r) => r.storeId === store.id),
+    store,
+    merchantPosts
+  });
+});
+
+// API ROUTE: Get Merchant Promo Posts
+app.get('/api/merchant/posts', (req, res) => {
+  const { storeId, author } = req.query;
+  let list = deduplicatePostsList(postsData);
+  if (storeId) {
+    list = list.filter((p) => p.storeId === storeId || p.author?.toLowerCase().includes((storeId as string).toLowerCase()));
+  }
+  if (author) {
+    list = list.filter((p) => p.author?.toLowerCase().includes((author as string).toLowerCase()));
+  }
+  res.json({ success: true, count: list.length, posts: list });
+});
+
+// API ROUTE: Create Merchant Promo Post
+app.post('/api/merchant/posts/create', async (req, res) => {
+  try {
+    const {
+      storeId,
+      storeName,
+      title,
+      content,
+      category,
+      imageUrl,
+      discountTag,
+      targetAudience,
+      status,
+      featured
+    } = req.body;
+
+    if (!title || !content) {
+      return res.status(400).json({ error: 'Promo title and description are required.' });
+    }
+
+    const matchedStore = storesData.find((s) => s.id === storeId);
+    const resolvedAuthor = storeName || matchedStore?.name || 'Merchant Partner';
+
+    const newPost: AdminPost = {
+      id: `promo-${Date.now()}`,
+      storeId: storeId || matchedStore?.id,
+      title: title.trim(),
+      content: content.trim(),
+      category: (category as any) || 'Promotion',
+      imageUrl: imageUrl || 'https://images.unsplash.com/photo-1556742049-0a67c5574f73?auto=format&fit=crop&w=1200&q=80',
+      author: resolvedAuthor,
+      discountTag: discountTag ? discountTag.trim() : undefined,
+      targetAudience: targetAudience || 'all',
+      status: status || 'published',
+      createdAt: new Date().toISOString(),
+      likesCount: 0,
+      featured: !!featured
+    };
+
+    await persistPost(newPost);
+
+    // If published, trigger push notification for app users
+    if (newPost.status === 'published') {
+      const notif: NotificationMessage = {
+        id: `notif-promo-${Date.now()}`,
+        title: `🏷️ PROMO: ${newPost.title.slice(0, 60)}${newPost.title.length > 60 ? '...' : ''}`,
+        body: `Special offer at ${resolvedAuthor}: ${newPost.content.slice(0, 120)}${newPost.content.length > 120 ? '...' : ''}`,
+        type: 'promo',
+        timestamp: new Date().toISOString(),
+        read: false,
+        storeId: newPost.storeId,
+        targetRole: (newPost.targetAudience as any) || 'all'
+      };
+      await persistNotification(notif);
+    }
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Merchant Promo Post Created: "${newPost.title}"`,
+      type: 'system',
+      severity: 'info',
+      details: `Merchant ${resolvedAuthor} (${storeId}) created new promo post (${newPost.status}). Category: ${newPost.category}`,
+      user: resolvedAuthor
+    };
+    await persistAuditLog(log);
+
+    const storePosts = deduplicatePostsList(postsData).filter(
+      (p) => p.storeId === storeId || p.author?.toLowerCase().includes(resolvedAuthor.toLowerCase())
+    );
+
+    res.json({ success: true, post: newPost, posts: storePosts });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to create promo post', details: err.message });
+  }
+});
+
+// API ROUTE: Update Merchant Promo Post
+app.put('/api/merchant/posts/update', async (req, res) => {
+  try {
+    const {
+      id,
+      storeId,
+      title,
+      content,
+      category,
+      imageUrl,
+      discountTag,
+      targetAudience,
+      status,
+      featured
+    } = req.body;
+
+    if (!id) {
+      return res.status(400).json({ error: 'Post ID is required' });
+    }
+
+    const existingIdx = postsData.findIndex((p) => p.id === id);
+    if (existingIdx === -1) {
+      return res.status(404).json({ error: 'Promo post not found' });
+    }
+
+    const updatedPost: AdminPost = {
+      ...postsData[existingIdx],
+      storeId: storeId ?? postsData[existingIdx].storeId,
+      title: title !== undefined ? title.trim() : postsData[existingIdx].title,
+      content: content !== undefined ? content.trim() : postsData[existingIdx].content,
+      category: category ?? postsData[existingIdx].category,
+      imageUrl: imageUrl ?? postsData[existingIdx].imageUrl,
+      discountTag: discountTag !== undefined ? discountTag : postsData[existingIdx].discountTag,
+      targetAudience: targetAudience ?? postsData[existingIdx].targetAudience,
+      status: status ?? postsData[existingIdx].status,
+      featured: featured !== undefined ? featured : postsData[existingIdx].featured,
+      updatedAt: new Date().toISOString()
+    };
+
+    await persistPost(updatedPost);
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Merchant Promo Post Updated: "${updatedPost.title}"`,
+      type: 'system',
+      severity: 'info',
+      details: `Promo post ${id} updated to status "${updatedPost.status}".`,
+      user: updatedPost.author || 'merchant'
+    };
+    await persistAuditLog(log);
+
+    res.json({ success: true, post: updatedPost, posts: postsData });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to update promo post', details: err.message });
+  }
+});
+
+// API ROUTE: Delete Merchant Promo Post
+app.delete('/api/merchant/posts/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    await deletePost(id);
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Merchant Promo Post Deleted: ${id}`,
+      type: 'system',
+      severity: 'warning',
+      details: `Merchant promo post ${id} was deleted.`,
+      user: 'merchant'
+    };
+    await persistAuditLog(log);
+
+    res.json({ success: true, message: 'Promo post deleted successfully', posts: postsData });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete promo post', details: err.message });
+  }
+});
+
+// API ROUTE: Top Up Merchant Store Points Reserve
+app.post('/api/merchant/points/topup', async (req, res) => {
+  try {
+    const { storeId, pointsToAdd } = req.body;
+    if (!storeId || !pointsToAdd || pointsToAdd <= 0) {
+      return res.status(400).json({ error: 'Valid store ID and points amount are required.' });
+    }
+
+    const storeIdx = storesData.findIndex((s) => s.id === storeId);
+    if (storeIdx === -1) {
+      return res.status(404).json({ error: 'Store not found' });
+    }
+
+    const currentBal = storesData[storeIdx].pointsBalance ?? 14500;
+    const newBal = currentBal + Number(pointsToAdd);
+    storesData[storeIdx].pointsBalance = newBal;
+    await persistStore(storesData[storeIdx]);
+
+    const log: SystemAuditLog = {
+      id: `audit-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      title: `Merchant Points Reserve Replenished: +${pointsToAdd} pts`,
+      type: 'adjustment',
+      severity: 'success',
+      details: `Store "${storesData[storeIdx].name}" topped up points reserve by +${pointsToAdd} pts (New Balance: ${newBal.toLocaleString()} pts).`,
+      user: storesData[storeIdx].name
+    };
+    await persistAuditLog(log);
+
+    res.json({ success: true, pointsBalance: newBal, store: storesData[storeIdx] });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to replenish points balance', details: err.message });
+  }
 });
 
 // API ROUTE: Merchant Update Store Info (Address, Map Location, Hours, Category, Phone, Email)

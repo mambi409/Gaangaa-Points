@@ -29,6 +29,7 @@ export interface Store {
   reviewCount: number;
   image: string;
   pointsRate: number; // e.g. 10 points per $1 spent
+  pointsBalance?: number; // Store merchant points reserve balance
   description: string;
   distanceKm?: number;
   openHours: string;
@@ -136,6 +137,7 @@ export interface NotificationMessage {
 export interface MerchantStats {
   storeId: string;
   storeName: string;
+  pointsBalance?: number;
   todayPointsIssued: number;
   todayPointsRedeemed: number;
   todayTransactions: number;
@@ -213,6 +215,7 @@ export interface AdminOverviewStats {
 
 export interface AdminPost {
   id: string;
+  storeId?: string;
   title: string;
   content: string;
   excerpt?: string;
@@ -221,6 +224,7 @@ export interface AdminPost {
   sourceType?: string;
   imageUrl?: string;
   author: string;
+  discountTag?: string;
   targetAudience: 'all' | 'user' | 'merchant';
   status: 'published' | 'draft';
   createdAt: string;

@@ -441,22 +441,27 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
             const isGovLogo =
               !featuredPost.imageUrl ||
               featuredPost.imageUrl.includes('gobiernu_2x.png') ||
-              featuredPost.imageUrl.includes('gobiernu-logo');
+              featuredPost.imageUrl.includes('gobiernu-logo') ||
+              featuredPost.imageUrl.includes('emblem');
 
             return (
               <div
                 onClick={() => setSelectedArticle(featuredPost)}
                 className="group relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer grid grid-cols-1 lg:grid-cols-12 gap-0"
               >
-                <div className="lg:col-span-6 relative h-64 lg:h-auto min-h-[280px] bg-slate-950 overflow-hidden">
+                <div className={`lg:col-span-6 relative h-64 lg:h-auto min-h-[280px] bg-slate-950 overflow-hidden ${isGovLogo ? 'flex items-center justify-center p-8' : ''}`}>
                   <img
                     src={featuredPost.imageUrl || '/gobiernu_2x.png'}
                     alt={featuredPost.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+                    className={
+                      isGovLogo
+                        ? 'max-h-40 max-w-[240px] object-contain mx-auto transition-transform duration-500 group-hover:scale-105'
+                        : 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-500'
+                    }
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
+                      (e.currentTarget as HTMLImageElement).className = 'max-h-40 max-w-[240px] object-contain mx-auto';
                     }}
                   />
                   <div className="absolute top-3 left-3 flex flex-wrap gap-1.5">
@@ -529,7 +534,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
               const isGovLogo =
                 !post.imageUrl ||
                 post.imageUrl.includes('gobiernu_2x.png') ||
-                post.imageUrl.includes('gobiernu-logo');
+                post.imageUrl.includes('gobiernu-logo') ||
+                post.imageUrl.includes('emblem');
 
               return (
                 <div
@@ -538,16 +544,20 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                   className="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between"
                 >
                   <div>
-                    {/* Image Header with cover style */}
-                    <div className="relative h-44 overflow-hidden bg-slate-950">
+                    {/* Image Header: Full cover for photos, neat margin for government logo only */}
+                    <div className={`relative h-44 overflow-hidden bg-slate-950 ${isGovLogo ? 'flex items-center justify-center p-6' : ''}`}>
                       <img
                         src={post.imageUrl || '/gobiernu_2x.png'}
                         alt={post.title}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        className={
+                          isGovLogo
+                            ? 'max-h-28 max-w-[190px] object-contain mx-auto transition-transform duration-300 group-hover:scale-105'
+                            : 'w-full h-full object-cover group-hover:scale-105 transition-transform duration-300'
+                        }
                         referrerPolicy="no-referrer"
                         onError={(e) => {
                           (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                          (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
+                          (e.currentTarget as HTMLImageElement).className = 'max-h-28 max-w-[190px] object-contain mx-auto';
                         }}
                       />
                       <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
@@ -626,19 +636,25 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 className="w-full max-w-3xl rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
               >
-                {/* Header Image with Cover Style */}
-                <div className="relative h-56 sm:h-72 bg-slate-950 overflow-hidden shrink-0">
+                {/* Header Image with Cover Style for photos, margin for government emblem */}
+                <div className={`relative h-56 sm:h-72 bg-slate-950 overflow-hidden shrink-0 ${isGovLogo ? 'flex items-center justify-center p-8' : ''}`}>
                   <img
                     src={selectedArticle.imageUrl || '/gobiernu_2x.png'}
                     alt={selectedArticle.title}
-                    className="w-full h-full object-cover"
+                    className={
+                      isGovLogo
+                        ? 'max-h-44 max-w-[260px] object-contain mx-auto'
+                        : 'w-full h-full object-cover'
+                    }
                     referrerPolicy="no-referrer"
                     onError={(e) => {
                       (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                      (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
+                      (e.currentTarget as HTMLImageElement).className = 'max-h-44 max-w-[260px] object-contain mx-auto';
                     }}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
+                  {!isGovLogo && (
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/30 to-transparent" />
+                  )}
 
                   <button
                     onClick={() => setSelectedArticle(null)}

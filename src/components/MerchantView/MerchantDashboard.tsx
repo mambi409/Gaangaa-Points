@@ -17,12 +17,15 @@ import {
   RefreshCw,
   Sliders,
   CheckCircle2,
-  FileText
+  FileText,
+  Megaphone,
+  Gift
 } from 'lucide-react';
-import { Store, MerchantStats, RewardItem, Transaction } from '../../types';
+import { Store, MerchantStats, RewardItem, Transaction, AdminPost } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
 import { MerchantStoreProfileEditor } from './MerchantStoreProfileEditor';
 import { MerchantPointsMonitor } from './MerchantPointsMonitor';
+import { MerchantPromoManager } from './MerchantPromoManager';
 
 interface MerchantDashboardProps {
   stores: Store[];
@@ -44,9 +47,10 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
   onStoreUpdated
 }) => {
   const { t, language } = useLanguage();
-  const [activeTab, setActiveTab] = useState<'overview' | 'profile' | 'points' | 'rewards'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'promos' | 'points' | 'profile' | 'rewards'>('overview');
   const [stats, setStats] = useState<MerchantStats | null>(null);
   const [storeRewards, setStoreRewards] = useState<RewardItem[]>([]);
+  const [merchantPosts, setMerchantPosts] = useState<AdminPost[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [toastMessage, setToastMessage] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
 
@@ -63,6 +67,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     reviewCount: 120,
     image: '',
     pointsRate: 10,
+    pointsBalance: 14500,
     description: 'Partner store outlet',
     openHours: '7:00 AM - 7:00 PM',
     phone: '(415) 555-0192'
@@ -82,6 +87,9 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       const data = await res.json();
       setStats(data.stats);
       setStoreRewards(data.storeRewards || []);
+      if (data.merchantPosts) {
+        setMerchantPosts(data.merchantPosts);
+      }
     } catch (err) {
       console.error('Failed to fetch merchant stats:', err);
     } finally {
@@ -99,6 +107,106 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
     }
     fetchMerchantStats();
   };
+
+  // Promo Posts CRUD Handlers
+  const handleCreatePromoPost = async (postData: Partial<AdminPost>): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/merchant/posts/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...postData,
+          storeId: activeStore.id,
+          storeName: activeStore.name
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Promo post published successfully! 🚀', 'success');
+        fetchMerchantStats();
+        return true;
+      } else {
+        showToast(data.error || 'Failed to create promo post', 'error');
+        return false;
+      }
+    } catch (err) {
+      showToast('Network error while creating promo post', 'error');
+      return false;
+    }
+  };
+
+  const handleUpdatePromoPost = async (postData: Partial<AdminPost>): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/merchant/posts/update', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(postData)
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Promo post updated successfully! ✨', 'success');
+        fetchMerchantStats();
+        return true;
+      } else {
+        showToast(data.error || 'Failed to update promo post', 'error');
+        return false;
+      }
+    } catch (err) {
+      showToast('Network error while updating promo post', 'error');
+      return false;
+    }
+  };
+
+  const handleDeletePromoPost = async (postId: string): Promise<boolean> => {
+    try {
+      const res = await fetch(`/api/merchant/posts/${postId}`, {
+        method: 'DELETE'
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Promo post deleted successfully.', 'info');
+        setMerchantPosts((prev) => prev.filter((p) => p.id !== postId));
+        fetchMerchantStats();
+        return true;
+      } else {
+        showToast(data.error || 'Failed to delete promo post', 'error');
+        return false;
+      }
+    } catch (err) {
+      showToast('Network error while deleting promo post', 'error');
+      return false;
+    }
+  };
+
+  const handleTopupPoints = async (pointsToAdd: number): Promise<boolean> => {
+    try {
+      const res = await fetch('/api/merchant/points/topup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          storeId: activeStore.id,
+          pointsToAdd
+        })
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Points reserve replenished (+${pointsToAdd.toLocaleString()} pts)! ⭐`, 'success');
+        fetchMerchantStats();
+        return true;
+      } else {
+        showToast(data.error || 'Failed to top up points', 'error');
+        return false;
+      }
+    } catch (err) {
+      showToast('Network error while topping up points', 'error');
+      return false;
+    }
+  };
+
+  const pointsBalance = stats?.pointsBalance ?? activeStore.pointsBalance ?? 14500;
+  const totalRewarded = stats?.totalPointsRewardedAllTime || activeStore.totalPointsRewarded || 32500;
+  const totalRedeemed = stats?.totalPointsRedeemedAllTime || activeStore.totalPointsRedeemed || 9400;
+  const activePromoCount = merchantPosts.filter((p) => p.status === 'published').length;
 
   return (
     <div className="space-y-6">
@@ -127,7 +235,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
-                {language === 'es' ? 'Portal de Gestión para Comercios' : 'Merchant Partner Portal'}
+                {language === 'es' ? 'Portal de Gestión para Comercios' : 'Merchant Partner Dashboard'}
               </span>
               <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
@@ -197,16 +305,21 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
         <button
           type="button"
-          id="merchant-tab-store-profile"
-          onClick={() => setActiveTab('profile')}
+          id="merchant-tab-promo-posts"
+          onClick={() => setActiveTab('promos')}
           className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center justify-center gap-2 cursor-pointer ${
-            activeTab === 'profile'
+            activeTab === 'promos'
               ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
               : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
           }`}
         >
-          <MapPin className="w-4 h-4 text-emerald-600" />
-          <span>{language === 'es' ? 'Editar Info, Mapa y Horarios' : 'Store Profile & Map Location'}</span>
+          <Megaphone className="w-4 h-4 text-blue-600" />
+          <span>{language === 'es' ? 'Publicaciones & Promos' : 'Promo Posts & Deals'}</span>
+          {activePromoCount > 0 && (
+            <span className="px-1.5 py-0.5 rounded-full bg-blue-100 text-blue-700 text-[10px] font-black">
+              {activePromoCount}
+            </span>
+          )}
         </button>
 
         <button
@@ -220,7 +333,21 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
           }`}
         >
           <Award className="w-4 h-4 text-amber-500" />
-          <span>{language === 'es' ? 'Monitor de Puntos Otorgados' : 'Points Rewarded Monitor'}</span>
+          <span>{language === 'es' ? 'Puntos Otorgados & Canjeados' : 'Points Balance & Ledger'}</span>
+        </button>
+
+        <button
+          type="button"
+          id="merchant-tab-store-profile"
+          onClick={() => setActiveTab('profile')}
+          className={`flex-1 sm:flex-initial px-4 py-2.5 rounded-xl text-xs font-extrabold transition flex items-center justify-center gap-2 cursor-pointer ${
+            activeTab === 'profile'
+              ? 'bg-white text-slate-900 shadow-xs border border-slate-200'
+              : 'text-slate-600 hover:text-slate-900 hover:bg-white/50'
+          }`}
+        >
+          <MapPin className="w-4 h-4 text-emerald-600" />
+          <span>{language === 'es' ? 'Editar Info, Mapa y Horarios' : 'Store Profile & Map Location'}</span>
         </button>
 
         <button
@@ -240,135 +367,184 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
       {/* TAB 1: OVERVIEW & DASHBOARD SUMMARY */}
       {activeTab === 'overview' && (
         <div className="space-y-6">
-          {/* Merchant Key Metrics Grid */}
+          {/* Merchant Key Metrics Grid: Points Balance, Points Rewarded, Points Redeemed, Promo Posts */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Points Issued Today */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-              <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider">
-                  {language === 'es' ? 'Puntos Otorgados Hoy' : 'Points Rewarded Today'}
+            {/* Store Points Balance / Reserve */}
+            <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 rounded-2xl border border-slate-700 shadow-md flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-slate-300 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">
+                    {language === 'es' ? 'Saldo de Puntos' : 'Points Balance'}
+                  </span>
+                  <Sparkles className="w-4 h-4 text-amber-400" />
+                </div>
+                <div className="text-2xl font-black text-amber-400">
+                  {pointsBalance.toLocaleString()} <span className="text-sm font-semibold text-slate-300">pts</span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Store reserve available to reward members
+                </p>
+              </div>
+
+              <div className="pt-3 mt-2 border-t border-slate-700/60 flex items-center justify-between">
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2 py-0.5 rounded-md">
+                  🟢 Active Pool
                 </span>
-                <Award className="w-4 h-4 text-emerald-600" />
-              </div>
-              <div className="text-2xl font-extrabold text-slate-900">
-                +{stats?.todayPointsIssued.toLocaleString() || '1,480'} pts
-              </div>
-              <div className="inline-block text-[11px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-md mt-2">
-                {language === 'es' ? '↑ 14% más que ayer' : '↑ 14% higher than yesterday'}
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('points')}
+                  className="text-[11px] font-bold text-amber-400 hover:text-amber-300 underline cursor-pointer"
+                >
+                  Manage Reserve →
+                </button>
               </div>
             </div>
 
-            {/* Total Points Rewarded (All-Time) */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-              <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider">
-                  {language === 'es' ? 'Total Puntos Otorgados' : 'Total Points Rewarded'}
-                </span>
-                <Award className="w-4 h-4 text-blue-600" />
+            {/* Total Points Rewarded (Today & All-Time) */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">
+                    {language === 'es' ? 'Puntos Otorgados' : 'Points Rewarded'}
+                  </span>
+                  <Award className="w-4 h-4 text-blue-600" />
+                </div>
+                <div className="text-2xl font-extrabold text-blue-700">
+                  +{totalRewarded.toLocaleString()} <span className="text-sm font-semibold text-slate-500">pts</span>
+                </div>
+                <div className="inline-block text-[11px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md mt-2">
+                  +{stats?.todayPointsIssued.toLocaleString() || '1,480'} pts rewarded today
+                </div>
               </div>
-              <div className="text-2xl font-extrabold text-slate-900">
-                +{(stats?.totalPointsRewardedAllTime || activeStore.totalPointsRewarded || 32500).toLocaleString()} pts
-              </div>
-              <div className="inline-block text-[11px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md mt-2">
-                Cumulative member rewards
-              </div>
+              <p className="text-[10px] text-slate-400 mt-2">
+                Rate: {activeStore.pointsRate || 10} pts / Cg 1 spent
+              </p>
             </div>
 
-            {/* Total Checkout Revenue */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-              <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider">
-                  {language === 'es' ? 'Volumen de Ventas' : 'Loyalty Sales Volume'}
-                </span>
-                <DollarSign className="w-4 h-4 text-emerald-600" />
+            {/* Total Points Redeemed (Today & All-Time) */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">
+                    {language === 'es' ? 'Puntos Canjeados' : 'Points Redeemed'}
+                  </span>
+                  <Tag className="w-4 h-4 text-purple-600" />
+                </div>
+                <div className="text-2xl font-extrabold text-purple-700">
+                  -{totalRedeemed.toLocaleString()} <span className="text-sm font-semibold text-slate-500">pts</span>
+                </div>
+                <div className="inline-block text-[11px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-md mt-2">
+                  -{stats?.todayPointsRedeemed.toLocaleString() || '450'} pts redeemed today
+                </div>
               </div>
-              <div className="text-2xl font-extrabold text-slate-900">
-                Cg {stats?.todayRevenueEstimate ? stats.todayRevenueEstimate.toFixed(2) : '485.00'}
-              </div>
-              <div className="inline-block text-[11px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md mt-2">
-                {stats?.todayTransactions || 42} {language === 'es' ? 'compras hoy' : 'sales today'}
-              </div>
+              <p className="text-[10px] text-slate-400 mt-2">
+                {storeRewards.length} active reward offers live
+              </p>
             </div>
 
-            {/* Active Members */}
-            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-              <div className="flex items-center justify-between text-slate-500 mb-2">
-                <span className="text-xs font-bold uppercase tracking-wider">
-                  {language === 'es' ? 'Miembros Activos' : 'Active Store Members'}
-                </span>
-                <Users className="w-4 h-4 text-blue-600" />
+            {/* Promo Posts Count */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between text-slate-500 mb-2">
+                  <span className="text-xs font-bold uppercase tracking-wider">
+                    {language === 'es' ? 'Publicaciones Promo' : 'Promo Posts'}
+                  </span>
+                  <Megaphone className="w-4 h-4 text-emerald-600" />
+                </div>
+                <div className="text-2xl font-extrabold text-slate-900">
+                  {merchantPosts.length} <span className="text-sm font-semibold text-slate-500">posts</span>
+                </div>
+                <div className="inline-block text-[11px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-md mt-2">
+                  {activePromoCount} active live promotions
+                </div>
               </div>
-              <div className="text-2xl font-extrabold text-slate-900">
-                {stats?.activeMembersCount || 312} {language === 'es' ? 'miembros' : 'members'}
-              </div>
-              <div className="inline-block text-[11px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-md mt-2">
-                {language === 'es' ? 'Visitas recurrentes' : 'Repeat shoppers'}
+              <div className="pt-2">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('promos')}
+                  className="text-[11px] font-bold text-blue-600 hover:text-blue-700 underline cursor-pointer"
+                >
+                  Manage Promo Posts →
+                </button>
               </div>
             </div>
           </div>
 
           {/* Quick Action Navigation Banners */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            {/* Quick Edit Store Info */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            {/* Promo Post Manager Quick Button */}
             <button
-              onClick={() => setActiveTab('profile')}
-              className="p-6 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
+              onClick={() => setActiveTab('promos')}
+              className="p-5 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
             >
-              <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 w-fit mb-4">
-                <MapPin className="w-6 h-6 group-hover:scale-105 transition" />
+              <div className="p-3 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 w-fit mb-3">
+                <Megaphone className="w-5 h-5 group-hover:scale-105 transition" />
               </div>
-              <h3 className="font-extrabold text-lg text-slate-900">
-                {language === 'es' ? 'Editar Info y Ubicación' : 'Edit Store Info & Map'}
+              <h3 className="font-extrabold text-base text-slate-900">
+                Promo Posts
               </h3>
               <p className="text-xs text-slate-600 mt-1">
-                {language === 'es'
-                  ? 'Modifica dirección, coordenadas en el mapa, horarios de atención, teléfonos y email de contacto.'
-                  : 'Update store address, map coordinates, weekly opening hours, category, phone numbers and email.'}
+                Add, edit, and delete promo posts and flash deals for shoppers.
               </p>
-              <div className="mt-4 flex items-center gap-1 text-xs font-bold text-emerald-600">
-                {language === 'es' ? 'Configurar Tienda' : 'Configure Store'} <ChevronRight className="w-4 h-4" />
+              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-blue-600">
+                Manage Promos <ChevronRight className="w-4 h-4" />
               </div>
             </button>
 
             {/* Quick Points Rewarded Monitor */}
             <button
               onClick={() => setActiveTab('points')}
-              className="p-6 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
+              className="p-5 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
             >
-              <div className="p-3 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 w-fit mb-4">
-                <Award className="w-6 h-6 group-hover:scale-105 transition" />
+              <div className="p-3 rounded-xl bg-amber-50 text-amber-600 border border-amber-200 w-fit mb-3">
+                <Award className="w-5 h-5 group-hover:scale-105 transition" />
               </div>
-              <h3 className="font-extrabold text-lg text-slate-900">
-                {language === 'es' ? 'Monitor de Puntos' : 'Monitor Points Rewarded'}
+              <h3 className="font-extrabold text-base text-slate-900">
+                Points Ledger
               </h3>
               <p className="text-xs text-slate-600 mt-1">
-                {language === 'es'
-                  ? 'Revisa el historial de puntos acreditados, transacciones de compra y canjes de clientes.'
-                  : 'Track points awarded velocity, detailed customer transactions, and points distribution ledger.'}
+                Track points balance, points rewarded, and points redeemed.
               </p>
-              <div className="mt-4 flex items-center gap-1 text-xs font-bold text-amber-600">
-                {language === 'es' ? 'Ver Estadísticas' : 'View Points Ledger'} <ChevronRight className="w-4 h-4" />
+              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-amber-600">
+                View Ledger <ChevronRight className="w-4 h-4" />
+              </div>
+            </button>
+
+            {/* Quick Edit Store Info */}
+            <button
+              onClick={() => setActiveTab('profile')}
+              className="p-5 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
+            >
+              <div className="p-3 rounded-xl bg-emerald-50 text-emerald-600 border border-emerald-200 w-fit mb-3">
+                <MapPin className="w-5 h-5 group-hover:scale-105 transition" />
+              </div>
+              <h3 className="font-extrabold text-base text-slate-900">
+                Store Profile
+              </h3>
+              <p className="text-xs text-slate-600 mt-1">
+                Update store map location, opening hours, category, and phone.
+              </p>
+              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-emerald-600">
+                Edit Store <ChevronRight className="w-4 h-4" />
               </div>
             </button>
 
             {/* Quick POS Scan */}
             <button
               onClick={onOpenPOSTerminal}
-              className="p-6 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
+              className="p-5 bg-white hover:bg-slate-50 text-slate-900 rounded-2xl border border-slate-200 shadow-xs transition text-left group cursor-pointer"
             >
-              <div className="p-3 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 w-fit mb-4">
-                <Scan className="w-6 h-6 group-hover:scale-105 transition" />
+              <div className="p-3 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 w-fit mb-3">
+                <Scan className="w-5 h-5 group-hover:scale-105 transition" />
               </div>
-              <h3 className="font-extrabold text-lg text-slate-900">
-                {language === 'es' ? 'Terminal POS' : 'POS Scanner Terminal'}
+              <h3 className="font-extrabold text-base text-slate-900">
+                POS Terminal
               </h3>
               <p className="text-xs text-slate-600 mt-1">
-                {language === 'es'
-                  ? 'Escanea códigos de miembros, otorga puntos en caja y valida cupones al instante.'
-                  : 'Scan customer QR codes, reward points on purchases, and validate voucher redemptions.'}
+                Scan customer QR codes, reward points, and validate vouchers.
               </p>
-              <div className="mt-4 flex items-center gap-1 text-xs font-bold text-blue-600">
-                {language === 'es' ? 'Abrir Terminal' : 'Launch Scanner'} <ChevronRight className="w-4 h-4" />
+              <div className="mt-3 flex items-center gap-1 text-xs font-bold text-blue-600">
+                Launch Scanner <ChevronRight className="w-4 h-4" />
               </div>
             </button>
           </div>
@@ -427,7 +603,31 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         </div>
       )}
 
-      {/* TAB 2: STORE PROFILE & MAP LOCATION EDITOR */}
+      {/* TAB 2: PROMO POSTS MANAGER (ADD, EDIT, DELETE) */}
+      {activeTab === 'promos' && (
+        <MerchantPromoManager
+          activeStore={activeStore}
+          posts={merchantPosts}
+          isLoading={isLoading}
+          onRefresh={fetchMerchantStats}
+          onCreatePost={handleCreatePromoPost}
+          onUpdatePost={handleUpdatePromoPost}
+          onDeletePost={handleDeletePromoPost}
+        />
+      )}
+
+      {/* TAB 3: POINTS REWARDED & REDEEMED MONITOR & BALANCE */}
+      {activeTab === 'points' && (
+        <MerchantPointsMonitor
+          store={activeStore}
+          stats={stats}
+          isLoading={isLoading}
+          onRefresh={fetchMerchantStats}
+          onTopupPoints={handleTopupPoints}
+        />
+      )}
+
+      {/* TAB 4: STORE PROFILE & MAP LOCATION EDITOR */}
       {activeTab === 'profile' && (
         <MerchantStoreProfileEditor
           store={activeStore}
@@ -436,17 +636,7 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
         />
       )}
 
-      {/* TAB 3: POINTS REWARDED MONITOR */}
-      {activeTab === 'points' && (
-        <MerchantPointsMonitor
-          store={activeStore}
-          stats={stats}
-          isLoading={isLoading}
-          onRefresh={fetchMerchantStats}
-        />
-      )}
-
-      {/* TAB 4: REWARDS CATALOG */}
+      {/* TAB 5: REWARDS CATALOG */}
       {activeTab === 'rewards' && (
         <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs space-y-6">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">

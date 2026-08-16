@@ -25,26 +25,46 @@ interface MerchantPointsMonitorProps {
   stats: MerchantStats | null;
   isLoading: boolean;
   onRefresh: () => void;
+  onTopupPoints?: (pointsToAdd: number) => Promise<boolean>;
 }
 
 export const MerchantPointsMonitor: React.FC<MerchantPointsMonitorProps> = ({
   store,
   stats,
   isLoading,
-  onRefresh
+  onRefresh,
+  onTopupPoints
 }) => {
   const { language } = useLanguage();
   const [searchQuery, setSearchQuery] = useState('');
   const [timeRange, setTimeRange] = useState<'today' | '7days' | '30days' | 'all'>('all');
   const [filterType, setFilterType] = useState<'all' | 'earn' | 'redeem' | 'bonus'>('all');
+  const [isTopupModalOpen, setIsTopupModalOpen] = useState(false);
+  const [topupAmount, setTopupAmount] = useState('5000');
+  const [isTopupSubmitting, setIsTopupSubmitting] = useState(false);
 
   // Compute metrics
+  const pointsBalance = stats?.pointsBalance ?? store.pointsBalance ?? 14500;
   const totalRewarded = stats?.totalPointsRewardedAllTime || store.totalPointsRewarded || 32450;
   const todayRewarded = stats?.todayPointsIssued || 1480;
   const totalRedeemed = stats?.totalPointsRedeemedAllTime || store.totalPointsRedeemed || 9800;
+  const todayRedeemed = stats?.todayPointsRedeemed || 450;
   const totalRevenue = stats?.totalRevenueAllTime || 14250.0;
   const activeMembers = stats?.activeMembersCount || 312;
   const avgPointsPerSale = stats?.averagePointsPerSale || Math.round(totalRewarded / Math.max(1, (stats?.todayTransactions || 42) * 5));
+
+  const handleTopupSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const pts = parseInt(topupAmount, 10);
+    if (!pts || pts <= 0) return;
+    if (onTopupPoints) {
+      setIsTopupSubmitting(true);
+      await onTopupPoints(pts);
+      setIsTopupSubmitting(false);
+      setIsTopupModalOpen(false);
+      onRefresh();
+    }
+  };
 
   // Transactions list
   const transactions = stats?.recentActivity || [];
@@ -131,70 +151,102 @@ export const MerchantPointsMonitor: React.FC<MerchantPointsMonitorProps> = ({
         </div>
       </div>
 
-      {/* Points Rewarded Metric Cards Grid */}
+      {/* Points Balance & Key Metrics Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* Total Points Rewarded (All-Time) */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">
-              {language === 'es' ? 'Total Puntos Otorgados' : 'Total Points Rewarded'}
+        {/* Merchant Points Reserve Balance */}
+        <div className="bg-gradient-to-br from-slate-900 to-slate-800 text-white p-5 rounded-2xl border border-slate-700 shadow-md flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-slate-300 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider">
+                {language === 'es' ? 'Saldo de Reserva de Puntos' : 'Store Points Balance'}
+              </span>
+              <Sparkles className="w-4 h-4 text-amber-400" />
+            </div>
+            <div className="text-2xl font-black text-amber-400">
+              {pointsBalance.toLocaleString()} <span className="text-sm font-semibold text-slate-300">pts</span>
+            </div>
+            <p className="text-[11px] text-slate-400 mt-1">
+              Available pool to reward members
+            </p>
+          </div>
+
+          <div className="pt-3 mt-2 border-t border-slate-700/60 flex items-center justify-between">
+            <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/60 border border-emerald-800 px-2 py-0.5 rounded-md">
+              🟢 Reserve Healthy
             </span>
-            <Award className="w-4 h-4 text-emerald-600" />
-          </div>
-          <div className="text-2xl font-extrabold text-slate-900">
-            +{totalRewarded.toLocaleString()} pts
-          </div>
-          <div className="inline-block text-[11px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-md mt-2">
-            ⭐ Cumulative Customer Credits
+            {onTopupPoints && (
+              <button
+                type="button"
+                onClick={() => setIsTopupModalOpen(true)}
+                className="px-2.5 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 text-[11px] font-black rounded-lg transition cursor-pointer"
+              >
+                + Top Up
+              </button>
+            )}
           </div>
         </div>
 
-        {/* Points Rewarded Today */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">
-              {language === 'es' ? 'Puntos Otorgados Hoy' : 'Points Rewarded Today'}
-            </span>
-            <TrendingUp className="w-4 h-4 text-blue-600" />
+        {/* Total Points Rewarded (All-Time + Today) */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider">
+                {language === 'es' ? 'Puntos Otorgados' : 'Points Rewarded'}
+              </span>
+              <Award className="w-4 h-4 text-blue-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-blue-700">
+              +{totalRewarded.toLocaleString()} <span className="text-sm font-semibold text-slate-500">pts</span>
+            </div>
+            <div className="inline-block text-[11px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md mt-2">
+              +{todayRewarded.toLocaleString()} pts rewarded today
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-blue-700">
-            +{todayRewarded.toLocaleString()} pts
+          <p className="text-[10px] text-slate-400 mt-3 pt-2 border-t border-slate-100">
+            Rate: {store.pointsRate || 10} pts / Cg 1 spent
+          </p>
+        </div>
+
+        {/* Total Points Redeemed (All-Time + Today) */}
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider">
+                {language === 'es' ? 'Puntos Canjeados' : 'Points Redeemed'}
+              </span>
+              <Tag className="w-4 h-4 text-purple-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-purple-700">
+              -{totalRedeemed.toLocaleString()} <span className="text-sm font-semibold text-slate-500">pts</span>
+            </div>
+            <div className="inline-block text-[11px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-md mt-2">
+              -{todayRedeemed.toLocaleString()} pts redeemed today
+            </div>
           </div>
-          <div className="inline-block text-[11px] bg-blue-50 text-blue-700 font-bold px-2 py-0.5 rounded-md mt-2">
-            ↑ 18% vs. 7-day average
-          </div>
+          <p className="text-[10px] text-slate-400 mt-3 pt-2 border-t border-slate-100">
+            Voucher claims and store perks
+          </p>
         </div>
 
         {/* Total Loyalty Sales Volume */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">
-              {language === 'es' ? 'Ventas Fidelidad Generadas' : 'Loyalty Sales Volume'}
-            </span>
-            <DollarSign className="w-4 h-4 text-emerald-600" />
+        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs flex flex-col justify-between">
+          <div>
+            <div className="flex items-center justify-between text-slate-500 mb-2">
+              <span className="text-xs font-bold uppercase tracking-wider">
+                {language === 'es' ? 'Ventas Fidelidad' : 'Loyalty Sales Volume'}
+              </span>
+              <DollarSign className="w-4 h-4 text-emerald-600" />
+            </div>
+            <div className="text-2xl font-extrabold text-slate-900">
+              Cg {totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <div className="inline-block text-[11px] bg-emerald-50 text-emerald-700 font-bold px-2 py-0.5 rounded-md mt-2">
+              {stats?.todayTransactions || 42} purchases logged
+            </div>
           </div>
-          <div className="text-2xl font-extrabold text-slate-900">
-            Cg {totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-          </div>
-          <div className="inline-block text-[11px] bg-slate-100 text-slate-700 font-bold px-2 py-0.5 rounded-md mt-2">
-            {stats?.todayTransactions || 42} transactions logged
-          </div>
-        </div>
-
-        {/* Avg Points Rewarded per Customer Sale */}
-        <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 mb-2">
-            <span className="text-xs font-bold uppercase tracking-wider">
-              {language === 'es' ? 'Promedio por Compra' : 'Avg Reward / Checkout'}
-            </span>
-            <Sparkles className="w-4 h-4 text-amber-500" />
-          </div>
-          <div className="text-2xl font-extrabold text-slate-900">
-            ~{avgPointsPerSale} pts
-          </div>
-          <div className="inline-block text-[11px] bg-amber-50 text-amber-700 font-bold px-2 py-0.5 rounded-md mt-2">
-            Rate: {store.pointsRate || 10} pts / Cg 1 spent
-          </div>
+          <p className="text-[10px] text-slate-400 mt-3 pt-2 border-t border-slate-100">
+            ~{avgPointsPerSale} avg pts per sale
+          </p>
         </div>
       </div>
 
@@ -447,6 +499,91 @@ export const MerchantPointsMonitor: React.FC<MerchantPointsMonitorProps> = ({
           </table>
         </div>
       </div>
+      {/* Top Up Points Reserve Modal */}
+      {isTopupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 border border-slate-200 shadow-2xl space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center gap-3">
+              <div className="p-3 rounded-2xl bg-amber-50 text-amber-600 border border-amber-200">
+                <Sparkles className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black text-slate-900">
+                  Top Up Points Reserve
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Replenish loyalty points available to reward shoppers at {store.name}.
+                </p>
+              </div>
+            </div>
+
+            <form onSubmit={handleTopupSubmit} className="space-y-4 pt-2">
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1">
+                  Points Amount to Add
+                </label>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {['2500', '5000', '10000'].map((amt) => (
+                    <button
+                      key={amt}
+                      type="button"
+                      onClick={() => setTopupAmount(amt)}
+                      className={`py-2 rounded-xl text-xs font-bold border transition cursor-pointer ${
+                        topupAmount === amt
+                          ? 'bg-amber-50 border-amber-500 text-amber-900 font-extrabold'
+                          : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                      }`}
+                    >
+                      +{Number(amt).toLocaleString()} pts
+                    </button>
+                  ))}
+                </div>
+                <input
+                  type="number"
+                  min="100"
+                  step="100"
+                  value={topupAmount}
+                  onChange={(e) => setTopupAmount(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-bold text-slate-900 focus:bg-white focus:outline-hidden"
+                  placeholder="Enter custom points amount"
+                  required
+                />
+              </div>
+
+              <div className="p-3 bg-slate-50 rounded-xl border border-slate-200 text-xs text-slate-600 space-y-1">
+                <div className="flex justify-between">
+                  <span>Current Reserve:</span>
+                  <span className="font-bold text-slate-900">{pointsBalance.toLocaleString()} pts</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>After Top-Up:</span>
+                  <span className="font-bold text-amber-600">
+                    {(pointsBalance + (Number(topupAmount) || 0)).toLocaleString()} pts
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setIsTopupModalOpen(false)}
+                  disabled={isTopupSubmitting}
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isTopupSubmitting}
+                  className="px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-black transition cursor-pointer disabled:opacity-50"
+                >
+                  {isTopupSubmitting ? 'Replenishing...' : 'Confirm Top-Up'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
