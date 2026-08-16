@@ -1782,8 +1782,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden flex flex-col justify-between hover:border-blue-900/60 transition shadow-sm"
                   >
                     <div>
-                      {/* Image Header: Full cover for photos, neat margin for government logo only */}
-                      <div className={`relative h-44 w-full bg-slate-950 overflow-hidden ${isGovLogo ? 'flex items-center justify-center p-6' : ''}`}>
+                      {/* Image Header: Full cover for photos, pure white background for government logo */}
+                      <div className={`relative h-44 w-full overflow-hidden ${isGovLogo ? 'bg-white flex items-center justify-center p-6 border-b border-slate-800' : 'bg-slate-950'}`}>
                         <img
                           src={post.imageUrl || '/gobiernu_2x.png'}
                           alt={post.title}

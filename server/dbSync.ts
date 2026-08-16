@@ -827,7 +827,7 @@ export function deduplicatePostsList(posts: AdminPost[]): AdminPost[] {
   return result;
 }
 
-export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> {
+export async function syncGobiernuToFirestore(limitPerSubcategory = 10): Promise<AdminPost[]> {
   const governmentEndpoints = [
     { key: 'nieuw', name: 'Notisia General', category: 'Announcement', subCategory: 'Notisia General / News' },
     { key: 'ministers_nieuw', name: 'Notisia di Ministernan', category: 'Announcement', subCategory: 'Notisia di Ministernan' },
@@ -839,7 +839,7 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
   ];
 
   try {
-    console.log('[Firestore] 🇨🇼 Starting daily scan across ALL Gobiernu.cw news subcategories (strictly deduplicating)...');
+    console.log('[Firestore] 🇨🇼 Starting scan across ALL Gobiernu.cw news subcategories to populate all feed categories...');
     const aggregatedRaw: Array<{ raw: any; endpointMeta: typeof governmentEndpoints[0] }> = [];
 
     // Scan all subcategory endpoints concurrently with individual timeouts
@@ -850,7 +850,7 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
             headers: {
               'User-Agent': 'OmniLoyaltyCuracao/1.0 (Government-News-Aggregator; contact@omniloyalty.app)'
             },
-            signal: AbortSignal.timeout(9000)
+            signal: AbortSignal.timeout(10000)
           });
 
           if (res.ok) {
@@ -871,14 +871,18 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
 
     if (aggregatedRaw.length === 0) {
       console.warn('[Firestore] No items retrieved from Gobiernu.cw subcategories.');
-      return deduplicatePostsList(postsData.filter((p) => p.id?.startsWith('gobiernu-'))).slice(0, limit);
+      return deduplicatePostsList(postsData.filter((p) => p.id?.startsWith('gobiernu-')));
     }
 
-    // Strict multi-factor deduplication across all subcategories
+    // Group items by subcategory so EVERY subcategory retains its latest articles
+    const groupedByEndpoint = new Map<string, Array<{ raw: any; endpointMeta: typeof governmentEndpoints[0] }>>();
+    for (const ep of governmentEndpoints) {
+      groupedByEndpoint.set(ep.key, []);
+    }
+
     const seenExtIds = new Set<string | number>();
     const seenTitles = new Set<string>();
     const seenUrls = new Set<string>();
-    const uniqueRaw: Array<{ raw: any; endpointMeta: typeof governmentEndpoints[0] }> = [];
 
     for (const item of aggregatedRaw) {
       const p = item.raw;
@@ -887,7 +891,6 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       const normUrl = normalizeUrlForDedupe(p.link);
       const extId = p.id;
 
-      // Deduplication check
       if (extId !== undefined && extId !== null && seenExtIds.has(extId)) continue;
       if (normTitle && normTitle.length > 6 && seenTitles.has(normTitle)) continue;
       if (normUrl && normUrl.length > 8 && seenUrls.has(normUrl)) continue;
@@ -896,28 +899,37 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       if (normTitle && normTitle.length > 6) seenTitles.add(normTitle);
       if (normUrl && normUrl.length > 8) seenUrls.add(normUrl);
 
-      uniqueRaw.push(item);
+      const list = groupedByEndpoint.get(item.endpointMeta.key) || [];
+      list.push(item);
+      groupedByEndpoint.set(item.endpointMeta.key, list);
     }
 
-    // Sort descending by publication date
-    uniqueRaw.sort((a, b) => {
+    // Collect top items from EACH category to ensure no subcategory is empty or missing
+    const allSelectedRaw: Array<{ raw: any; endpointMeta: typeof governmentEndpoints[0] }> = [];
+    for (const [_key, list] of groupedByEndpoint.entries()) {
+      list.sort((a, b) => {
+        const dateA = new Date(a.raw.date || a.raw.modified || 0).getTime();
+        const dateB = new Date(b.raw.date || b.raw.modified || 0).getTime();
+        return dateB - dateA;
+      });
+      allSelectedRaw.push(...list.slice(0, limitPerSubcategory));
+    }
+
+    // Sort overall list descending by publication date
+    allSelectedRaw.sort((a, b) => {
       const dateA = new Date(a.raw.date || a.raw.modified || 0).getTime();
       const dateB = new Date(b.raw.date || b.raw.modified || 0).getTime();
       return dateB - dateA;
     });
 
-    // Strictly take only the top 10 freshest unique government news posts
-    const MAX_GOV_POSTS = 10;
-    const topScanned = uniqueRaw.slice(0, MAX_GOV_POSTS);
-
-    const fetchedPosts: AdminPost[] = topScanned.map((entry, idx) => {
+    const fetchedPosts: AdminPost[] = allSelectedRaw.map((entry, idx) => {
       const p = entry.raw;
       const ep = entry.endpointMeta;
       const title = cleanGobiernuHtml(p.title?.rendered || 'Notisia di Gobiernu di Kòrsou');
       const rawContent = cleanGobiernuHtml(p.content?.rendered || p.excerpt?.rendered || '');
       const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 200) + '...'));
 
-      // If no picture exists, fallback strictly to the official Government of Curaçao logo uploaded by the user
+      // If no picture exists, fallback strictly to the official Government of Curaçao logo
       const featuredMedia = p._embedded?.['wp:featuredmedia']?.[0]?.source_url;
       const media =
         featuredMedia && typeof featuredMedia === 'string' && featuredMedia.startsWith('http')
@@ -950,33 +962,7 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
 
     const canonicalGovIds = new Set(fetchedPosts.map((p) => p.id));
 
-    // Clean up Firestore: Delete ANY government news post that is NOT in the latest 10 items
-    if (db) {
-      try {
-        const existingSnap = await getDocs(collection(db, 'posts'));
-        if (!existingSnap.empty) {
-          for (const docSnap of existingSnap.docs) {
-            const docId = docSnap.id;
-            const docData = docSnap.data() as AdminPost;
-            const isGovDoc =
-              docId.startsWith('gobiernu-') ||
-              docData.author === 'Gobiernu di Kòrsou' ||
-              (docData.author && docData.author.toLowerCase().includes('gobiernu')) ||
-              (docData.sourceUrl && docData.sourceUrl.includes('gobiernu.cw'));
-
-            // If this is a government post and not one of the latest 10 canonical posts, delete it from Firestore
-            if (isGovDoc && !canonicalGovIds.has(docId)) {
-              console.log(`[Firestore Cleanup] 🗑️ Deleting older/extra government news post beyond top 10: ${docId} ("${docData.title?.slice(0, 40)}")`);
-              await deleteDoc(doc(db, 'posts', docId)).catch(() => {});
-            }
-          }
-        }
-      } catch (cleanErr) {
-        console.warn('[Firestore Cleanup] Notice cleaning extra government posts:', cleanErr);
-      }
-    }
-
-    // Persist all 10 canonical posts to Firestore (ensures availability for Vercel and all clients)
+    // Persist all canonical posts from all categories to Firestore
     const todayYMD = new Date().toISOString().slice(0, 10);
     for (const post of fetchedPosts) {
       if (db) {
@@ -987,7 +973,7 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
         }
       }
 
-      // Check if post is published on the SAME DAY
+      // Check if post is published on the SAME DAY for notification push
       const postDateYMD = new Date(post.createdAt).toISOString().slice(0, 10);
       if (postDateYMD === todayYMD) {
         const notifId = `notif-news-${post.id}`;
@@ -1009,7 +995,7 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       }
     }
 
-    // Update in-memory postsData: retain non-government posts (promos/updates) + strictly the latest 10 government posts
+    // Update in-memory postsData: retain non-government posts (promos/updates) + all fetched government subcategory posts
     const nonGovPosts = postsData.filter(
       (p) =>
         !p.id?.startsWith('gobiernu-') &&
@@ -1027,7 +1013,7 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       try {
         await setDoc(doc(db, 'system', 'gobiernu_sync_status'), {
           lastScannedAt: new Date().toISOString(),
-          totalScannedAcrossSubcategories: uniqueRaw.length,
+          totalScannedAcrossSubcategories: allSelectedRaw.length,
           savedCount: fetchedPosts.length,
           topArticle: fetchedPosts[0]?.title || '',
           endpointsScanned: governmentEndpoints.map((e) => e.key)
@@ -1037,11 +1023,11 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       }
     }
 
-    console.log(`[Firestore] ✅ Scanned all subcategories! Stored strictly the top ${fetchedPosts.length} government posts in Firebase Firestore.`);
+    console.log(`[Firestore] ✅ Scanned all feed categories! Stored ${fetchedPosts.length} posts across all subcategories in Firebase Firestore.`);
     return fetchedPosts;
   } catch (err) {
     console.warn('[Firestore] Notice: Multi-subcategory scan error:', err);
-    return deduplicatePostsList(postsData.filter((p) => p.id?.startsWith('gobiernu-'))).slice(0, limit);
+    return deduplicatePostsList(postsData.filter((p) => p.id?.startsWith('gobiernu-')));
   }
 }
 

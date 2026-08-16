@@ -20,11 +20,12 @@ import {
   Landmark,
   Megaphone,
   Scale,
-  Award
+  Award,
+  Newspaper
 } from 'lucide-react';
 import { AdminPost } from '../types';
 import { useLanguage } from '../context/LanguageContext';
-import { db, collection, getDocs } from '../lib/firebase';
+import { db, collection, getDocs, doc, setDoc } from '../lib/firebase';
 
 interface NewsViewProps {
   onOpenStoreExplore?: () => void;
@@ -85,7 +86,90 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string | null>(null);
 
-  // Fetch posts from API with automatic Firestore fallback (essential for live & Vercel)
+  // Helper to fetch directly from Gobiernu endpoints on client-side if API fails or for Vercel direct execution
+  const fetchGobiernuDirectClient = async (): Promise<AdminPost[]> => {
+    const eps = [
+      { key: 'nieuw', name: 'Notisia General', category: 'Announcement', subCategory: 'Notisia General / News' },
+      { key: 'ministers_nieuw', name: 'Notisia di Ministernan', category: 'Announcement', subCategory: 'Notisia di Ministernan' },
+      { key: 'konseho_niews', name: 'Notisia di Konseho', category: 'Announcement', subCategory: 'Notisia di Konseho' },
+      { key: 'breaking-news', name: 'Breaking News', category: 'Announcement', subCategory: 'Breaking News' },
+      { key: 'optima_forma', name: 'Óptima Forma', category: 'Announcement', subCategory: 'Óptima Forma' },
+      { key: 'landscourant', name: 'Landscourant', category: 'Announcement', subCategory: 'Landscourant Ofisial' },
+      { key: 'posts', name: 'Publikashonnan', category: 'Announcement', subCategory: 'Publikashon' }
+    ];
+
+    const aggregated: AdminPost[] = [];
+    await Promise.allSettled(
+      eps.map(async (ep) => {
+        try {
+          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${ep.key}?per_page=10&_embed`);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) {
+              for (const item of data) {
+                if (item && item.id && item.title?.rendered) {
+                  const title = (item.title.rendered || '')
+                    .replace(/&#8211;/g, '–')
+                    .replace(/&#8217;/g, "'")
+                    .replace(/&#8220;/g, '"')
+                    .replace(/&#8221;/g, '"')
+                    .replace(/&amp;/g, '&')
+                    .replace(/<[^>]+>/g, ' ')
+                    .trim();
+
+                  const content = (item.content?.rendered || item.excerpt?.rendered || '')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                  const excerpt = (item.excerpt?.rendered || content.slice(0, 180) + '...')
+                    .replace(/<[^>]+>/g, ' ')
+                    .replace(/\s+/g, ' ')
+                    .trim();
+
+                  const media =
+                    item._embedded?.['wp:featuredmedia']?.[0]?.source_url ||
+                    'https://gobiernu.cw/wp-content/uploads/2019/04/gobiernu_2x.png';
+
+                  const postObj: AdminPost = {
+                    id: `gobiernu-${item.id}`,
+                    externalId: item.id,
+                    title,
+                    content: content || excerpt,
+                    excerpt,
+                    category: 'Announcement',
+                    subCategory: ep.subCategory,
+                    sourceType: ep.key,
+                    imageUrl: media,
+                    author: 'Gobiernu di Kòrsou',
+                    targetAudience: 'all',
+                    status: 'published',
+                    createdAt: item.date ? new Date(item.date).toISOString() : new Date().toISOString(),
+                    likesCount: 0,
+                    featured: false,
+                    sourceUrl: item.link || 'https://gobiernu.cw'
+                  };
+
+                  aggregated.push(postObj);
+
+                  // Persist to Firestore directly from client if db is available
+                  if (db) {
+                    setDoc(doc(db, 'posts', postObj.id), postObj).catch(() => {});
+                  }
+                }
+              }
+            }
+          }
+        } catch (e) {
+          // ignore individual timeout
+        }
+      })
+    );
+
+    return aggregated;
+  };
+
+  // Fetch posts from API with automatic Firestore & Direct sync fallback (essential for live & Vercel)
   const loadPosts = async (forceSync = false) => {
     if (forceSync) {
       setIsRefreshing(true);
@@ -110,7 +194,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       console.warn('[NewsView] API fetch notice, falling back to direct Firestore:', apiErr);
     }
 
-    // 2. Direct Firestore query fallback (guarantees Vercel reads the 10 posts stored in Firebase)
+    // 2. Direct Firestore query fallback (guarantees Vercel reads all posts stored in Firebase)
     if (loadedPosts.length === 0 && db) {
       try {
         const snap = await getDocs(collection(db, 'posts'));
@@ -126,6 +210,18 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       }
     }
 
+    // 3. If forceSync is requested or no posts found, scan directly from Gobiernu.cw
+    if (forceSync || loadedPosts.length === 0) {
+      try {
+        const directPosts = await fetchGobiernuDirectClient();
+        if (directPosts.length > 0) {
+          loadedPosts = [...loadedPosts, ...directPosts];
+        }
+      } catch (directErr) {
+        console.warn('[NewsView] Direct client sync notice:', directErr);
+      }
+    }
+
     // Deduplicate and sort newest first
     const uniquePosts = deduplicateClientPosts(loadedPosts);
     if (uniquePosts.length > 0) {
@@ -134,8 +230,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       if (forceSync) {
         setSyncStatus(
           language === 'es'
-            ? '¡Escaneo diario completado! 10 noticias únicas actualizadas y sincronizadas en Firebase'
-            : 'Daily scan complete! Top 10 unique news items synced without duplicates'
+            ? `¡Todas las subcategorías sincronizadas! ${uniquePosts.length} publicaciones disponibles en Firebase`
+            : `All feed categories synced! ${uniquePosts.length} posts saved in Firebase`
         );
       }
     }
@@ -181,7 +277,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         border: 'border-red-500/30'
       };
     }
-    if (sub.includes('Landscourant') || post.sourceType === 'landscourant') {
+    if (sub.includes('Landscourant') || post.sourceType === 'landscourant' || post.sourceType === 'laws') {
       return {
         label: 'Landscourant',
         icon: FileText,
@@ -197,7 +293,15 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         border: 'border-emerald-500/30'
       };
     }
-    if (isGov) {
+    if (sub.includes('Publikashon') || post.sourceType === 'posts') {
+      return {
+        label: 'Publikashon',
+        icon: Newspaper,
+        color: 'bg-purple-600 text-white',
+        border: 'border-purple-500/30'
+      };
+    }
+    if (isGov || post.sourceType === 'nieuw') {
       return {
         label: 'Notisia General',
         icon: Building2,
@@ -213,7 +317,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
     };
   };
 
-  // Filter posts
+  // Filter posts across all feed categories
   const filteredPosts = posts.filter((post) => {
     const isGov =
       post.id?.startsWith('gobiernu-') ||
@@ -221,10 +325,30 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       post.sourceUrl?.includes('gobiernu.cw');
 
     if (selectedSubCategory !== 'All') {
-      if (selectedSubCategory === 'ministers_nieuw' && post.sourceType !== 'ministers_nieuw' && !post.subCategory?.includes('Minister')) return false;
-      if (selectedSubCategory === 'konseho_niews' && post.sourceType !== 'konseho_niews' && !post.subCategory?.includes('Konseho')) return false;
-      if (selectedSubCategory === 'general_news' && post.sourceType !== 'nieuw' && !post.subCategory?.includes('General')) return false;
-      if (selectedSubCategory === 'promotions' && isGov) return false;
+      if (selectedSubCategory === 'ministers_nieuw') {
+        const match = post.sourceType === 'ministers_nieuw' || post.subCategory?.includes('Minister');
+        if (!match) return false;
+      } else if (selectedSubCategory === 'konseho_niews') {
+        const match = post.sourceType === 'konseho_niews' || post.subCategory?.includes('Konseho');
+        if (!match) return false;
+      } else if (selectedSubCategory === 'general_news') {
+        const match = post.sourceType === 'nieuw' || (!post.sourceType && isGov) || post.subCategory?.includes('General');
+        if (!match) return false;
+      } else if (selectedSubCategory === 'optima_forma') {
+        const match = post.sourceType === 'optima_forma' || post.subCategory?.includes('Óptima');
+        if (!match) return false;
+      } else if (selectedSubCategory === 'breaking-news') {
+        const match = post.sourceType === 'breaking-news' || post.subCategory?.includes('Breaking');
+        if (!match) return false;
+      } else if (selectedSubCategory === 'landscourant') {
+        const match = post.sourceType === 'landscourant' || post.sourceType === 'laws' || post.subCategory?.includes('Landscourant');
+        if (!match) return false;
+      } else if (selectedSubCategory === 'publikashon') {
+        const match = post.sourceType === 'posts' || post.subCategory?.includes('Publikashon');
+        if (!match) return false;
+      } else if (selectedSubCategory === 'promotions') {
+        if (isGov) return false;
+      }
     }
 
     if (searchQuery.trim()) {
@@ -349,7 +473,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
               : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
           }`}
         >
-          {language === 'es' ? 'Todas las Subcategorías' : 'All Subcategories'} ({posts.length})
+          {language === 'es' ? 'Todas las Categorías' : 'All Categories'} ({posts.length})
         </button>
 
         <button
@@ -389,6 +513,54 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         </button>
 
         <button
+          onClick={() => setSelectedSubCategory('optima_forma')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+            selectedSubCategory === 'optima_forma'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <Award className="w-3.5 h-3.5 text-emerald-400" />
+          <span>Óptima Forma</span>
+        </button>
+
+        <button
+          onClick={() => setSelectedSubCategory('breaking-news')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+            selectedSubCategory === 'breaking-news'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <Megaphone className="w-3.5 h-3.5 text-red-400" />
+          <span>Breaking News</span>
+        </button>
+
+        <button
+          onClick={() => setSelectedSubCategory('landscourant')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+            selectedSubCategory === 'landscourant'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <FileText className="w-3.5 h-3.5 text-slate-400" />
+          <span>Landscourant Ofisial</span>
+        </button>
+
+        <button
+          onClick={() => setSelectedSubCategory('publikashon')}
+          className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
+            selectedSubCategory === 'publikashon'
+              ? 'bg-blue-600 text-white shadow-sm'
+              : 'bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800'
+          }`}
+        >
+          <Newspaper className="w-3.5 h-3.5 text-purple-400" />
+          <span>Publikashonnan</span>
+        </button>
+
+        <button
           onClick={() => setSelectedSubCategory('promotions')}
           className={`px-4 py-2 rounded-xl text-xs font-bold whitespace-nowrap transition flex items-center gap-1.5 cursor-pointer ${
             selectedSubCategory === 'promotions'
@@ -406,10 +578,10 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         <div className="py-20 text-center space-y-3 bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800">
           <RefreshCw className="w-8 h-8 text-blue-500 animate-spin mx-auto" />
           <p className="text-sm font-bold text-slate-900 dark:text-white">
-            {language === 'es' ? 'Escaneando las subcategorías de Gobiernu.cw...' : 'Scanning all subcategories from Gobiernu.cw & Firebase...'}
+            {language === 'es' ? 'Escaneando todas las subcategorías de Gobiernu.cw...' : 'Scanning all subcategories from Gobiernu.cw & Firebase...'}
           </p>
           <p className="text-xs text-slate-400">
-            {language === 'es' ? 'Obteniendo las últimas 10 noticias oficiales.' : 'Aggregating the 10 freshest announcements.'}
+            {language === 'es' ? 'Obteniendo y sincronizando todas las noticias oficiales.' : 'Aggregating and synchronizing official announcements across all feed categories.'}
           </p>
         </div>
       ) : filteredPosts.length === 0 ? (
@@ -422,12 +594,12 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
             <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
               {language === 'es'
                 ? 'Presiona escanear para actualizar todas las subcategorías de Gobiernu.cw.'
-                : 'Press scan to fetch and synchronize the 10 freshest news across all categories.'}
+                : 'Press scan to fetch and synchronize the freshest news across all categories.'}
             </p>
           </div>
           <button
             onClick={() => loadPosts(true)}
-            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/25"
+            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold transition shadow-md shadow-blue-600/25 cursor-pointer"
           >
             {language === 'es' ? 'Escanear Todas las Subcategorías Ahora' : 'Scan All Subcategories Now'}
           </button>
@@ -449,7 +621,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                 onClick={() => setSelectedArticle(featuredPost)}
                 className="group relative bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-md hover:shadow-xl transition-all duration-300 cursor-pointer grid grid-cols-1 lg:grid-cols-12 gap-0"
               >
-                <div className={`lg:col-span-6 relative h-64 lg:h-auto min-h-[280px] bg-slate-950 overflow-hidden ${isGovLogo ? 'flex items-center justify-center p-8' : ''}`}>
+                {/* Header: White background for government logo, dark background for cover photos */}
+                <div className={`lg:col-span-6 relative h-64 lg:h-auto min-h-[280px] ${isGovLogo ? 'bg-white flex items-center justify-center p-8 border-b lg:border-b-0 lg:border-r border-slate-200 dark:border-slate-800' : 'bg-slate-950'} overflow-hidden`}>
                   <img
                     src={featuredPost.imageUrl || '/gobiernu_2x.png'}
                     alt={featuredPost.title}
@@ -544,8 +717,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                   className="group bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs hover:shadow-lg transition-all duration-200 cursor-pointer flex flex-col justify-between"
                 >
                   <div>
-                    {/* Image Header: Full cover for photos, neat margin for government logo only */}
-                    <div className={`relative h-44 overflow-hidden bg-slate-950 ${isGovLogo ? 'flex items-center justify-center p-6' : ''}`}>
+                    {/* Image Header: Full cover for photos, pure white background with neat margin for government logo */}
+                    <div className={`relative h-44 overflow-hidden ${isGovLogo ? 'bg-white flex items-center justify-center p-6 border-b border-slate-200 dark:border-slate-800' : 'bg-slate-950'}`}>
                       <img
                         src={post.imageUrl || '/gobiernu_2x.png'}
                         alt={post.title}
@@ -636,8 +809,8 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                 exit={{ opacity: 0, scale: 0.95, y: 10 }}
                 className="w-full max-w-3xl rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col max-h-[90vh]"
               >
-                {/* Header Image with Cover Style for photos, margin for government emblem */}
-                <div className={`relative h-56 sm:h-72 bg-slate-950 overflow-hidden shrink-0 ${isGovLogo ? 'flex items-center justify-center p-8' : ''}`}>
+                {/* Header Image: Pure white background for government logo, dark cover style for photos */}
+                <div className={`relative h-56 sm:h-72 overflow-hidden shrink-0 ${isGovLogo ? 'bg-white flex items-center justify-center p-8 border-b border-slate-200 dark:border-slate-800' : 'bg-slate-950'}`}>
                   <img
                     src={selectedArticle.imageUrl || '/gobiernu_2x.png'}
                     alt={selectedArticle.title}
@@ -663,7 +836,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
                     <X className="w-5 h-5" />
                   </button>
 
-                  <div className="absolute bottom-4 left-6 right-6 text-white space-y-1 z-10">
+                  <div className={`absolute bottom-4 left-6 right-6 space-y-1 z-10 ${isGovLogo ? 'hidden' : 'text-white'}`}>
                     <div className="flex items-center gap-2 text-xs font-semibold text-blue-300">
                       <span className={`px-2.5 py-0.5 rounded-full ${modalMeta.color} backdrop-blur-md text-white text-[10px] font-black uppercase flex items-center gap-1`}>
                         <ModalIcon className="w-2.5 h-2.5" />
@@ -680,6 +853,22 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
 
                 {/* Body Content */}
                 <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 text-slate-800 dark:text-slate-200">
+                  {isGovLogo && (
+                    <div className="space-y-2 pb-2">
+                      <div className="flex items-center gap-2 text-xs font-semibold">
+                        <span className={`px-2.5 py-0.5 rounded-full ${modalMeta.color} text-white text-[10px] font-black uppercase flex items-center gap-1`}>
+                          <ModalIcon className="w-2.5 h-2.5" />
+                          <span>{modalMeta.label}</span>
+                        </span>
+                        <span className="text-slate-400">•</span>
+                        <span className="text-slate-500 dark:text-slate-400">{new Date(selectedArticle.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <h2 className="text-xl sm:text-2xl font-black text-slate-900 dark:text-white leading-snug">
+                        {selectedArticle.title}
+                      </h2>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800 text-xs text-slate-500 dark:text-slate-400">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
