@@ -827,6 +827,102 @@ export function deduplicatePostsList(posts: AdminPost[]): AdminPost[] {
   return result;
 }
 
+export async function fetchGobiernuNieuwDirect(limit = 15): Promise<AdminPost[]> {
+  try {
+    console.log('[Gobiernu News] 🇨🇼 Fetching direct government feed from: https://gobiernu.cw/nieuw/ ...');
+    let data: any[] = [];
+
+    // Attempt 1: Fetch with _embed to get media and authors
+    try {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/nieuw?per_page=${Math.max(limit, 10)}&_embed`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json) && json.length > 0) {
+          data = json;
+        }
+      }
+    } catch (_e) {
+      // fallback
+    }
+
+    // Attempt 2: Direct fast fetch
+    if (!data || data.length === 0) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 6000);
+      const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/nieuw?per_page=${Math.max(limit, 10)}`, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+        },
+        signal: controller.signal
+      });
+      clearTimeout(timeout);
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json)) {
+          data = json;
+        }
+      }
+    }
+
+    if (!data || data.length === 0) {
+      return postsData.filter((p) => p.id?.startsWith('gobiernu-') || p.sourceUrl?.includes('gobiernu.cw/nieuw/')).slice(0, limit);
+    }
+
+    const posts: AdminPost[] = data.slice(0, limit).map((p, idx) => {
+      const title = cleanGobiernuHtml(p.title?.rendered || 'Notisia di Gobiernu di Kòrsou');
+      const rawContent = cleanGobiernuHtml(p.content?.rendered || p.excerpt?.rendered || '');
+      const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 200) + '...'));
+
+      let media = p._embedded?.['wp:featuredmedia']?.[0]?.source_url;
+      if (!media && p.content?.rendered) {
+        const imgMatch = p.content.rendered.match(/<img[^>]+src="([^">]+)"/i);
+        if (imgMatch && imgMatch[1] && imgMatch[1].startsWith('http')) {
+          media = imgMatch[1];
+        }
+      }
+      if (!media || typeof media !== 'string' || !media.startsWith('http')) {
+        media = 'https://gobiernu.cw/wp-content/uploads/2019/04/gobiernu_2x.png';
+      }
+
+      const canonicalId = `gobiernu-${p.id}`;
+      const permalink = p.link || `https://gobiernu.cw/nieuw/${p.slug || p.id}/`;
+
+      return {
+        id: canonicalId,
+        externalId: p.id,
+        title,
+        content: rawContent || excerpt,
+        excerpt,
+        category: 'Announcement',
+        subCategory: 'Government news',
+        sourceType: 'Government news',
+        imageUrl: media,
+        author: 'Gobiernu di Kòrsou',
+        targetAudience: 'all',
+        status: 'published',
+        createdAt: p.date ? new Date(p.date).toISOString() : new Date().toISOString(),
+        updatedAt: p.modified ? new Date(p.modified).toISOString() : undefined,
+        likesCount: 0,
+        featured: idx === 0,
+        sourceUrl: permalink
+      };
+    });
+
+    return posts;
+  } catch (err) {
+    console.error('[Gobiernu News] Error fetching directly from https://gobiernu.cw/nieuw/:', err);
+    return postsData.filter((p) => p.id?.startsWith('gobiernu-')).slice(0, limit);
+  }
+}
+
 export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPost[]> {
   const governmentEndpoints = [
     { key: 'nieuw', name: 'Notisia General' },

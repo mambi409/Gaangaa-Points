@@ -92,6 +92,7 @@ import {
   collection,
   fetchLatestUsers,
   syncGobiernuToFirestore,
+  fetchGobiernuNieuwDirect,
   deduplicatePostsList
 } from './server/dbSync.js';
 
@@ -1852,14 +1853,48 @@ async function fetchGobiernuLatestPosts(limit = 10): Promise<AdminPost[]> {
   }
 }
 
+// API ROUTE: Live Query Gobiernu.cw News Posts directly from https://gobiernu.cw/nieuw/
+app.get(['/api/gobiernu/nieuw', '/api/gobiernu/feed'], async (req, res) => {
+  try {
+    const limit = Math.min(30, Math.max(1, parseInt(req.query.limit as string, 10) || 15));
+    const posts = await fetchGobiernuNieuwDirect(limit);
+    res.json({
+      success: true,
+      source: 'https://gobiernu.cw/nieuw/',
+      feedUrl: 'https://gobiernu.cw/wp-json/wp/v2/nieuw',
+      count: posts.length,
+      posts
+    });
+  } catch (err: any) {
+    res.status(502).json({
+      success: false,
+      error: 'Failed to retrieve government news feed from https://gobiernu.cw/nieuw/',
+      details: err.message
+    });
+  }
+});
+
 // API ROUTE: Live Query Gobiernu.cw 10 Latest News Posts across all subcategories
 app.get('/api/gobiernu/news', async (req, res) => {
   try {
     const limit = Math.min(20, Math.max(1, parseInt(req.query.limit as string, 10) || 10));
+    const sourceParam = req.query.source as string;
+    
+    // If specifically requesting nieuw feed
+    if (sourceParam && (sourceParam.includes('nieuw') || sourceParam === 'nieuw')) {
+      const posts = await fetchGobiernuNieuwDirect(limit);
+      return res.json({
+        success: true,
+        source: 'https://gobiernu.cw/nieuw/',
+        count: posts.length,
+        posts
+      });
+    }
+
     const posts = await syncGobiernuToFirestore(limit);
     res.json({
       success: true,
-      source: 'https://gobiernu.cw',
+      source: 'https://gobiernu.cw/nieuw/',
       domain: 'gobiernu.cw',
       subcategoriesScanned: ['nieuw', 'ministers_nieuw', 'konseho_niews', 'breaking-news', 'optima_forma', 'landscourant', 'posts'],
       count: posts.length,
