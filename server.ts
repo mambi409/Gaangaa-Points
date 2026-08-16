@@ -91,7 +91,8 @@ import {
   getDocs,
   collection,
   fetchLatestUsers,
-  syncGobiernuToFirestore
+  syncGobiernuToFirestore,
+  deduplicatePostsList
 } from './server/dbSync.js';
 
 // In-Memory Fallback State (delegated to dbSync)
@@ -1434,7 +1435,7 @@ app.get(['/api/posts', '/api/news'], async (req, res) => {
     }
     
     const category = req.query.category as string;
-    let results = [...postsData];
+    let results = deduplicatePostsList([...postsData]);
     if (category && category !== 'All') {
       results = results.filter((p) => p.category?.toLowerCase() === category.toLowerCase());
     }
@@ -1445,13 +1446,14 @@ app.get(['/api/posts', '/api/news'], async (req, res) => {
       posts: results
     });
   } catch (err: any) {
-    res.json({ success: true, count: postsData.length, posts: postsData });
+    const uniquePosts = deduplicatePostsList(postsData);
+    res.json({ success: true, count: uniquePosts.length, posts: uniquePosts });
   }
 });
 
 // API ROUTE: Get Posts
 app.get('/api/admin/posts', (req, res) => {
-  res.json({ posts: postsData });
+  res.json({ posts: deduplicatePostsList(postsData) });
 });
 
 // API ROUTE: Create Post

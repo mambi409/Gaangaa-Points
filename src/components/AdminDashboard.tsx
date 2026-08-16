@@ -211,7 +211,18 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
           const memberResult = await fetchOrSeedMembers();
           setRegisteredUsers(memberResult.users);
         }
-        setPosts(data.posts || []);
+        if (data.posts && Array.isArray(data.posts)) {
+          const seen = new Set<string>();
+          const uniquePosts = data.posts.filter((p: AdminPost) => {
+            const key = (p.id || '') + (p.title || '');
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setPosts(uniquePosts);
+        } else {
+          setPosts([]);
+        }
         setStores(data.stores || []);
         setRecentTransactions(data.recentTransactions || []);
       } else {

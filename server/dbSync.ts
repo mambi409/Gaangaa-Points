@@ -423,7 +423,7 @@ export async function initFirestoreSync() {
       console.log(`[Firestore] Loaded ${notificationsData.length} notifications from Firestore.`);
     }
 
-    // 7. Sync Posts
+    // 7. Sync Posts with strict deduplication
     const postsColRef = collection(db, 'posts');
     const postsSnap = await getDocs(postsColRef);
     if (postsSnap.empty) {
@@ -432,17 +432,19 @@ export async function initFirestoreSync() {
         await setDoc(doc(db, 'posts', p.id), p);
       }
     } else {
-      postsData.length = 0;
+      const loaded: AdminPost[] = [];
       postsSnap.forEach((d) => {
-        postsData.push(d.data() as AdminPost);
+        loaded.push(d.data() as AdminPost);
       });
+      postsData.length = 0;
+      postsData.push(...deduplicatePostsList(loaded));
       postsData.sort(
         (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
       );
-      console.log(`[Firestore] Loaded ${postsData.length} posts from Firestore.`);
+      console.log(`[Firestore] Loaded ${postsData.length} unique posts from Firestore.`);
     }
 
-    // 8. Auto-Sync & Save 10 latest Gobiernu.cw news posts directly into Firestore
+    // 8. Auto-Sync & Save 10 latest Gobiernu.cw news posts directly into Firestore (strictly unique)
     try {
       await syncGobiernuToFirestore(10);
     } catch (e) {
@@ -771,6 +773,60 @@ export function cleanGobiernuHtml(htmlStr: string): string {
     .trim();
 }
 
+// Helper function to normalize titles for strict deduplication
+export function normalizeTitleForDedupe(str: string): string {
+  if (!str) return '';
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove diacritics
+    .replace(/[^a-z0-9]/g, '') // keep only alphanumeric
+    .trim();
+}
+
+// Helper function to normalize URLs for deduplication
+export function normalizeUrlForDedupe(url?: string): string {
+  if (!url) return '';
+  return url
+    .toLowerCase()
+    .replace(/^https?:\/\/(www\.)?/, '')
+    .replace(/\/+$/, '')
+    .split('?')[0]
+    .split('#')[0]
+    .trim();
+}
+
+// Master deduplicator for posts array
+export function deduplicatePostsList(posts: AdminPost[]): AdminPost[] {
+  const seenIds = new Set<string>();
+  const seenExtIds = new Set<string | number>();
+  const seenUrls = new Set<string>();
+  const seenTitles = new Set<string>();
+  const result: AdminPost[] = [];
+
+  for (const post of posts) {
+    if (!post || !post.title) continue;
+    const normTitle = normalizeTitleForDedupe(post.title);
+    const normUrl = normalizeUrlForDedupe(post.sourceUrl);
+    const extId = post.externalId;
+
+    // Check all duplicate conditions
+    if (post.id && seenIds.has(post.id)) continue;
+    if (extId !== undefined && extId !== null && seenExtIds.has(extId)) continue;
+    if (normUrl && normUrl.length > 8 && seenUrls.has(normUrl)) continue;
+    if (normTitle && normTitle.length > 6 && seenTitles.has(normTitle)) continue;
+
+    if (post.id) seenIds.add(post.id);
+    if (extId !== undefined && extId !== null) seenExtIds.add(extId);
+    if (normUrl && normUrl.length > 8) seenUrls.add(normUrl);
+    if (normTitle && normTitle.length > 6) seenTitles.add(normTitle);
+
+    result.push(post);
+  }
+
+  return result;
+}
+
 export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> {
   const governmentEndpoints = [
     { key: 'nieuw', name: 'Notisia General', category: 'Announcement', subCategory: 'Notisia General / News' },
@@ -783,14 +839,14 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
   ];
 
   try {
-    console.log('[Firestore] 🇨🇼 Starting daily scan across ALL Gobiernu.cw news subcategories...');
+    console.log('[Firestore] 🇨🇼 Starting daily scan across ALL Gobiernu.cw news subcategories (strictly deduplicating)...');
     const aggregatedRaw: Array<{ raw: any; endpointMeta: typeof governmentEndpoints[0] }> = [];
 
     // Scan all subcategory endpoints concurrently with individual timeouts
     await Promise.allSettled(
       governmentEndpoints.map(async (ep) => {
         try {
-          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${ep.key}?per_page=12&_embed`, {
+          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${ep.key}?per_page=15&_embed`, {
             headers: {
               'User-Agent': 'OmniLoyaltyCuracao/1.0 (Government-News-Aggregator; contact@omniloyalty.app)'
             },
@@ -801,14 +857,13 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
             const data = await res.json();
             if (Array.isArray(data)) {
               for (const item of data) {
-                if (item && item.id) {
+                if (item && item.id && item.title?.rendered) {
                   aggregatedRaw.push({ raw: item, endpointMeta: ep });
                 }
               }
             }
           }
         } catch (epErr) {
-          // Log individual endpoint notice without breaking whole scan
           console.warn(`[Firestore] Notice on endpoint ${ep.key}:`, (epErr as any)?.message);
         }
       })
@@ -816,19 +871,32 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
 
     if (aggregatedRaw.length === 0) {
       console.warn('[Firestore] No items retrieved from Gobiernu.cw subcategories.');
-      return [];
+      return deduplicatePostsList(postsData.filter((p) => p.id?.startsWith('gobiernu-'))).slice(0, limit);
     }
 
-    // Deduplicate by ID
-    const seenIds = new Set<string>();
+    // Strict multi-factor deduplication across all subcategories
+    const seenExtIds = new Set<string | number>();
+    const seenTitles = new Set<string>();
+    const seenUrls = new Set<string>();
     const uniqueRaw: Array<{ raw: any; endpointMeta: typeof governmentEndpoints[0] }> = [];
+
     for (const item of aggregatedRaw) {
-      const uniqueKey = `${item.endpointMeta.key}-${item.raw.id}`;
-      if (!seenIds.has(uniqueKey) && !seenIds.has(String(item.raw.id))) {
-        seenIds.add(uniqueKey);
-        seenIds.add(String(item.raw.id));
-        uniqueRaw.push(item);
-      }
+      const p = item.raw;
+      const titleCleaned = cleanGobiernuHtml(p.title?.rendered || '');
+      const normTitle = normalizeTitleForDedupe(titleCleaned);
+      const normUrl = normalizeUrlForDedupe(p.link);
+      const extId = p.id;
+
+      // Deduplication check
+      if (extId !== undefined && extId !== null && seenExtIds.has(extId)) continue;
+      if (normTitle && normTitle.length > 6 && seenTitles.has(normTitle)) continue;
+      if (normUrl && normUrl.length > 8 && seenUrls.has(normUrl)) continue;
+
+      if (extId !== undefined && extId !== null) seenExtIds.add(extId);
+      if (normTitle && normTitle.length > 6) seenTitles.add(normTitle);
+      if (normUrl && normUrl.length > 8) seenUrls.add(normUrl);
+
+      uniqueRaw.push(item);
     }
 
     // Sort descending by publication date
@@ -838,7 +906,7 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       return dateB - dateA;
     });
 
-    // Take the top freshest posts
+    // Take the top freshest unique posts
     const topScanned = uniqueRaw.slice(0, limit);
 
     const fetchedPosts: AdminPost[] = topScanned.map((entry, idx) => {
@@ -850,12 +918,16 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
 
       // If no picture exists, fallback strictly to the official Government of Curaçao logo
       const featuredMedia = p._embedded?.['wp:featuredmedia']?.[0]?.source_url;
-      const media = featuredMedia && typeof featuredMedia === 'string' && featuredMedia.startsWith('http')
-        ? featuredMedia
-        : '/gobiernu-logo.svg';
+      const media =
+        featuredMedia && typeof featuredMedia === 'string' && featuredMedia.startsWith('http')
+          ? featuredMedia
+          : '/gobiernu-logo.svg';
+
+      // Canonical deterministic ID: gobiernu-${p.id}
+      const canonicalId = `gobiernu-${p.id}`;
 
       return {
-        id: `gobiernu-${ep.key}-${p.id}`,
+        id: canonicalId,
         externalId: p.id,
         title,
         content: rawContent || excerpt,
@@ -875,15 +947,39 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       };
     });
 
-    // Persist all 10 posts to Firestore and in-memory cache
-    for (const post of fetchedPosts) {
-      const idx = postsData.findIndex((x) => x.id === post.id || (post.externalId && x.externalId === post.externalId));
-      if (idx >= 0) {
-        postsData[idx] = { ...postsData[idx], ...post };
-      } else {
-        postsData.unshift(post);
-      }
+    // Clean up any stale duplicate documents in Firestore before saving
+    if (db) {
+      try {
+        const existingSnap = await getDocs(collection(db, 'posts'));
+        if (!existingSnap.empty) {
+          for (const docSnap of existingSnap.docs) {
+            const docId = docSnap.id;
+            const docData = docSnap.data() as AdminPost;
+            const normDocTitle = normalizeTitleForDedupe(docData.title);
+            const normDocUrl = normalizeUrlForDedupe(docData.sourceUrl);
 
+            // If this is a gobiernu post with non-canonical ID or duplicate title/link matching one of our canonical posts
+            const isMatch = fetchedPosts.some(
+              (fp) =>
+                (fp.externalId && docData.externalId === fp.externalId) ||
+                (normDocTitle && normalizeTitleForDedupe(fp.title) === normDocTitle) ||
+                (normDocUrl && normalizeUrlForDedupe(fp.sourceUrl) === normDocUrl)
+            );
+
+            // If it matches a post we are syncing, but the document ID is not canonical (e.g. gobiernu-ministers_nieuw-xxx)
+            if (isMatch && docId.startsWith('gobiernu-') && !fetchedPosts.some((fp) => fp.id === docId)) {
+              console.log(`[Firestore Cleanup] Deleting duplicate legacy post document: ${docId}`);
+              await deleteDoc(doc(db, 'posts', docId)).catch(() => {});
+            }
+          }
+        }
+      } catch (cleanErr) {
+        console.warn('[Firestore Cleanup] Notice checking duplicate documents:', cleanErr);
+      }
+    }
+
+    // Persist all 10 canonical posts to Firestore and update in-memory cache
+    for (const post of fetchedPosts) {
       if (db) {
         try {
           await setDoc(doc(db, 'posts', post.id), post);
@@ -892,6 +988,13 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
         }
       }
     }
+
+    // Update in-memory postsData: replace or prepend, then deduplicate
+    const nonGovPosts = postsData.filter((p) => !p.id?.startsWith('gobiernu-') && p.category !== 'Announcement');
+    const combinedPosts = [...fetchedPosts, ...nonGovPosts];
+    postsData.length = 0;
+    postsData.push(...deduplicatePostsList(combinedPosts));
+    postsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     // Save Daily Scan Status metadata to Firestore
     if (db) {
@@ -908,12 +1011,11 @@ export async function syncGobiernuToFirestore(limit = 10): Promise<AdminPost[]> 
       }
     }
 
-    postsData.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    console.log(`[Firestore] ✅ Successfully scanned all subcategories and synced the latest ${fetchedPosts.length} posts into Firestore database!`);
+    console.log(`[Firestore] ✅ Successfully scanned all subcategories without duplicates! Synced ${fetchedPosts.length} posts into Firestore database.`);
     return fetchedPosts;
   } catch (err) {
     console.warn('[Firestore] Notice: Multi-subcategory scan error:', err);
-    return [];
+    return deduplicatePostsList(postsData.filter((p) => p.id?.startsWith('gobiernu-'))).slice(0, limit);
   }
 }
 

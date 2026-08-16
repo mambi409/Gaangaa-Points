@@ -30,6 +30,50 @@ interface NewsViewProps {
   onOpenStoreExplore?: () => void;
 }
 
+// Client-side strict deduplicator
+function deduplicateClientPosts(posts: AdminPost[]): AdminPost[] {
+  const seenIds = new Set<string>();
+  const seenExtIds = new Set<string | number>();
+  const seenUrls = new Set<string>();
+  const seenTitles = new Set<string>();
+  const result: AdminPost[] = [];
+
+  for (const post of posts) {
+    if (!post || !post.title) continue;
+
+    const normTitle = post.title
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z0-9]/g, '')
+      .trim();
+
+    const normUrl = (post.sourceUrl || '')
+      .toLowerCase()
+      .replace(/^https?:\/\/(www\.)?/, '')
+      .replace(/\/+$/, '')
+      .split('?')[0]
+      .split('#')[0]
+      .trim();
+
+    const extId = post.externalId;
+
+    if (post.id && seenIds.has(post.id)) continue;
+    if (extId !== undefined && extId !== null && seenExtIds.has(extId)) continue;
+    if (normUrl && normUrl.length > 8 && seenUrls.has(normUrl)) continue;
+    if (normTitle && normTitle.length > 6 && seenTitles.has(normTitle)) continue;
+
+    if (post.id) seenIds.add(post.id);
+    if (extId !== undefined && extId !== null) seenExtIds.add(extId);
+    if (normUrl && normUrl.length > 8) seenUrls.add(normUrl);
+    if (normTitle && normTitle.length > 6) seenTitles.add(normTitle);
+
+    result.push(post);
+  }
+
+  return result;
+}
+
 export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
   const { t, language } = useLanguage();
   const [posts, setPosts] = useState<AdminPost[]>([]);
@@ -82,15 +126,16 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       }
     }
 
-    // Sort newest first
-    if (loadedPosts.length > 0) {
-      loadedPosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      setPosts(loadedPosts);
+    // Deduplicate and sort newest first
+    const uniquePosts = deduplicateClientPosts(loadedPosts);
+    if (uniquePosts.length > 0) {
+      uniquePosts.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+      setPosts(uniquePosts);
       if (forceSync) {
         setSyncStatus(
           language === 'es'
-            ? '¡Escaneo diario completado! 10 noticias actualizadas y sincronizadas en Firebase'
-            : 'Daily scan complete! Latest 10 news items across all subcategories synced to Firebase'
+            ? '¡Escaneo diario completado! 10 noticias únicas actualizadas y sincronizadas en Firebase'
+            : 'Daily scan complete! Top 10 unique news items synced without duplicates'
         );
       }
     }
