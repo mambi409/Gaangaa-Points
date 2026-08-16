@@ -832,6 +832,7 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
     { key: 'nieuw', name: 'Notisia General' },
     { key: 'ministers_nieuw', name: 'Notisia di Ministernan' },
     { key: 'konseho_niews', name: 'Notisia di Konseho' },
+    { key: 'landing-page', name: 'Landing Pages & Proklamashon' },
     { key: 'breaking-news', name: 'Breaking News' },
     { key: 'optima_forma', name: 'Óptima Forma' },
     { key: 'landscourant', name: 'Landscourant' },
@@ -842,29 +843,60 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
     console.log('[Firestore] 🇨🇼 Fetching from all Gobiernu.cw subcategories to aggregate the top 10 latest items under "Government news"...');
     const rawItems: any[] = [];
 
-    // Concurrently fetch from all government subcategory endpoints
+    // Concurrently fetch from all government subcategory endpoints with dual-strategy
     await Promise.allSettled(
       governmentEndpoints.map(async (ep) => {
+        // Attempt 1: Fetch with _embed
         try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 6000);
           const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${ep.key}?per_page=15&_embed`, {
             headers: {
-              'User-Agent': 'OmniLoyaltyCuracao/1.0 (Government-News-Aggregator; contact@omniloyalty.app)'
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
             },
-            signal: AbortSignal.timeout(10000)
+            signal: controller.signal
           });
+          clearTimeout(timeout);
 
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data)) {
               for (const item of data) {
                 if (item && item.id && item.title?.rendered) {
-                  rawItems.push(item);
+                  rawItems.push({ ...item, _sourceEndpoint: ep.key });
+                }
+              }
+              return;
+            }
+          }
+        } catch (_err) {
+          // Timeout or error on _embed, fallback to fast direct fetch
+        }
+
+        // Attempt 2: Fallback without _embed (very fast, <300ms)
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 6000);
+          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${ep.key}?per_page=15`, {
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+            },
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
+
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) {
+              for (const item of data) {
+                if (item && item.id && item.title?.rendered) {
+                  rawItems.push({ ...item, _sourceEndpoint: ep.key });
                 }
               }
             }
           }
-        } catch (epErr) {
-          console.warn(`[Firestore] Notice on endpoint ${ep.key}:`, (epErr as any)?.message);
+        } catch (fallbackErr) {
+          console.warn(`[Firestore] Notice on endpoint ${ep.key}:`, (fallbackErr as any)?.message);
         }
       })
     );
@@ -912,12 +944,17 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
       const rawContent = cleanGobiernuHtml(p.content?.rendered || p.excerpt?.rendered || '');
       const excerpt = cleanGobiernuHtml(p.excerpt?.rendered || (rawContent.slice(0, 200) + '...'));
 
-      // If no picture exists, fallback strictly to the official Government of Curaçao logo
-      const featuredMedia = p._embedded?.['wp:featuredmedia']?.[0]?.source_url;
-      const media =
-        featuredMedia && typeof featuredMedia === 'string' && featuredMedia.startsWith('http')
-          ? featuredMedia
-          : 'https://gobiernu.cw/wp-content/uploads/2019/04/gobiernu_2x.png';
+      // Check for embedded media, inline image in content, or fallback to official Government emblem
+      let media = p._embedded?.['wp:featuredmedia']?.[0]?.source_url;
+      if (!media && p.content?.rendered) {
+        const imgMatch = p.content.rendered.match(/<img[^>]+src="([^">]+)"/i);
+        if (imgMatch && imgMatch[1] && imgMatch[1].startsWith('http')) {
+          media = imgMatch[1];
+        }
+      }
+      if (!media || typeof media !== 'string' || !media.startsWith('http')) {
+        media = 'https://gobiernu.cw/wp-content/uploads/2019/04/gobiernu_2x.png';
+      }
 
       // Canonical deterministic ID: gobiernu-${p.id}
       const canonicalId = `gobiernu-${p.id}`;
@@ -943,8 +980,24 @@ export async function syncGobiernuToFirestore(totalLimit = 10): Promise<AdminPos
       };
     });
 
-    // Persist all 10 posts under Government news to Firestore
+    // Persist all 10 posts under Government news to Firestore and prune older ones
     const todayYMD = new Date().toISOString().slice(0, 10);
+    const activeTop10Ids = new Set(fetchedPosts.map((p) => p.id));
+
+    if (db) {
+      try {
+        const existingPostsSnap = await getDocs(collection(db, 'posts'));
+        for (const docSnap of existingPostsSnap.docs) {
+          const docId = docSnap.id;
+          if (docId.startsWith('gobiernu-') && !activeTop10Ids.has(docId)) {
+            await deleteDoc(doc(db, 'posts', docId)).catch(() => {});
+          }
+        }
+      } catch (pruneErr) {
+        console.warn('[Firestore] Notice during pruning of older government news docs:', pruneErr);
+      }
+    }
+
     for (const post of fetchedPosts) {
       if (db) {
         try {

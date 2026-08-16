@@ -92,6 +92,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
       'nieuw',
       'ministers_nieuw',
       'konseho_niews',
+      'landing-page',
       'breaking-news',
       'optima_forma',
       'landscourant',
@@ -101,8 +102,35 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
     const rawCollected: any[] = [];
     await Promise.allSettled(
       endpoints.map(async (key) => {
+        // Attempt 1: Fetch with _embed
         try {
-          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${key}?per_page=12&_embed`);
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 6000);
+          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${key}?per_page=15&_embed`, {
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
+          if (res.ok) {
+            const data = await res.json();
+            if (Array.isArray(data)) {
+              for (const item of data) {
+                if (item && item.id && item.title?.rendered) {
+                  rawCollected.push(item);
+                }
+              }
+              return;
+            }
+          }
+        } catch (_e) {}
+
+        // Attempt 2: Fallback without _embed (super fast)
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 6000);
+          const res = await fetch(`https://gobiernu.cw/wp-json/wp/v2/${key}?per_page=15`, {
+            signal: controller.signal
+          });
+          clearTimeout(timeout);
           if (res.ok) {
             const data = await res.json();
             if (Array.isArray(data)) {
@@ -113,9 +141,7 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
               }
             }
           }
-        } catch (e) {
-          // ignore individual timeout
-        }
+        } catch (_e) {}
       })
     );
 
@@ -173,9 +199,16 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
         .replace(/\s+/g, ' ')
         .trim();
 
-      const media =
-        item._embedded?.['wp:featuredmedia']?.[0]?.source_url ||
-        'https://gobiernu.cw/wp-content/uploads/2019/04/gobiernu_2x.png';
+      let media = item._embedded?.['wp:featuredmedia']?.[0]?.source_url;
+      if (!media && item.content?.rendered) {
+        const match = item.content.rendered.match(/<img[^>]+src="([^">]+)"/i);
+        if (match && match[1] && match[1].startsWith('http')) {
+          media = match[1];
+        }
+      }
+      if (!media || typeof media !== 'string' || !media.startsWith('http')) {
+        media = 'https://gobiernu.cw/wp-content/uploads/2019/04/gobiernu_2x.png';
+      }
 
       const postObj: AdminPost = {
         id: `gobiernu-${item.id}`,

@@ -2513,8 +2513,6 @@ app.get('/api/admin/audit-logs', (req, res) => {
 
 // Vite Middleware & Static Server Production Setup
 async function startServer() {
-  await initFirestoreSync();
-
   if (process.env.NODE_ENV !== 'production') {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
@@ -2533,6 +2531,11 @@ async function startServer() {
   if (!process.env.VERCEL) {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
+    });
+
+    // Initialize Firestore sync in the background
+    initFirestoreSync().catch((err) => {
+      console.error('[Firestore] Background sync error:', err);
     });
 
     // Schedule automatic scan every 30 minutes to keep strictly the latest 10 news items freshly synced in Firestore
