@@ -1770,31 +1770,22 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                 const todayYMD = new Date().toISOString().slice(0, 10);
                 const postDateYMD = new Date(post.createdAt).toISOString().slice(0, 10);
                 const isSameDay = postDateYMD === todayYMD;
-                const isGovLogo =
-                  !post.imageUrl ||
-                  post.imageUrl.includes('gobiernu_2x.png') ||
-                  post.imageUrl.includes('gobiernu-logo');
-
                 return (
                   <div
                     key={post.id}
                     className="rounded-xl bg-slate-900 border border-slate-800 overflow-hidden flex flex-col justify-between hover:border-blue-900/60 transition shadow-sm"
                   >
                     <div>
-                      {/* Image Header: white background + margin only for official Government Logo */}
-                      <div className={`relative h-44 w-full overflow-hidden ${
-                        isGovLogo
-                          ? 'bg-white flex items-center justify-center border-b border-slate-800 p-4'
-                          : 'bg-slate-950'
-                      }`}>
+                      {/* Image Header with cover style */}
+                      <div className="relative h-44 w-full bg-slate-950 overflow-hidden">
                         <img
                           src={post.imageUrl || '/gobiernu_2x.png'}
                           alt={post.title}
-                          className={`${isGovLogo ? 'w-auto h-auto max-h-24 max-w-[65%] object-contain m-auto my-3' : 'w-full h-full object-cover'} transition-transform duration-300 group-hover:scale-105`}
+                          className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                           referrerPolicy="no-referrer"
                           onError={(e) => {
                             (e.currentTarget as HTMLImageElement).src = '/gobiernu_2x.png';
-                            (e.currentTarget as HTMLImageElement).className = 'w-auto h-auto max-h-24 max-w-[65%] object-contain m-auto my-3';
+                            (e.currentTarget as HTMLImageElement).className = 'w-full h-full object-cover';
                           }}
                         />
                         <div className="absolute top-3 left-3 flex items-center gap-1.5 flex-wrap">
