@@ -10,7 +10,11 @@ import {
   updateDoc,
   deleteDoc,
   query,
-  where
+  where,
+  onSnapshot,
+  orderBy,
+  limit,
+  serverTimestamp
 } from 'firebase/firestore';
 import {
   getAuth,
@@ -97,6 +101,10 @@ export {
   deleteDoc,
   query,
   where,
+  onSnapshot,
+  orderBy,
+  limit,
+  serverTimestamp,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
   signOut,

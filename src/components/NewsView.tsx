@@ -25,7 +25,7 @@ import {
 } from 'lucide-react';
 import { AdminPost } from '../types';
 import { useLanguage } from '../context/LanguageContext';
-import { db, collection, getDocs, doc, setDoc } from '../lib/firebase';
+import { db, collection, getDocs, doc, setDoc, onSnapshot } from '../lib/firebase';
 
 interface NewsViewProps {
   onOpenStoreExplore?: () => void;
@@ -342,8 +342,85 @@ export const NewsView: React.FC<NewsViewProps> = ({ onOpenStoreExplore }) => {
     setIsRefreshing(false);
   };
 
+  // Periodic background check: every 30 minutes, checks https://gobiernu.cw/nieuw/
+  // If no change is detected, it does nothing. If new articles are detected, it saves them to Firestore.
+  const checkGobiernuEvery30Min = async (currentPostsList: AdminPost[]) => {
+    try {
+      // First try via server API
+      let fetchedGovPosts: AdminPost[] = [];
+      try {
+        const res = await fetch('/api/gobiernu/nieuw?limit=10');
+        if (res.ok) {
+          const data = await res.json();
+          if (data && Array.isArray(data.posts) && data.posts.length > 0) {
+            fetchedGovPosts = data.posts;
+          }
+        }
+      } catch (_apiErr) {
+        // Fallback to direct client fetch
+        fetchedGovPosts = await fetchGobiernuDirectClient();
+      }
+
+      if (!fetchedGovPosts || fetchedGovPosts.length === 0) return;
+
+      // Check for changes against existing Firestore / local posts
+      const existingIds = new Set(currentPostsList.map((p) => p.id));
+      const newArticles = fetchedGovPosts.filter((item) => !existingIds.has(item.id));
+
+      if (newArticles.length === 0) {
+        // No change detected: do nothing as requested
+        return;
+      }
+
+      // New articles detected: write ONLY the new articles to Firebase Firestore
+      if (db) {
+        for (const newPost of newArticles) {
+          await setDoc(doc(db, 'posts', newPost.id), newPost).catch(() => {});
+        }
+      }
+    } catch (checkErr) {
+      console.warn('[NewsView] 30-minute background check notice:', checkErr);
+    }
+  };
+
   useEffect(() => {
+    // 1. If Firebase DB is connected, set up real-time listener (essential for Vercel)
+    let unsubscribeSnapshot: (() => void) | null = null;
+
+    if (db) {
+      try {
+        unsubscribeSnapshot = onSnapshot(collection(db, 'posts'), (snapshot) => {
+          if (!snapshot.empty) {
+            const fsPosts: AdminPost[] = [];
+            snapshot.forEach((docSnap) => {
+              fsPosts.push(docSnap.data() as AdminPost);
+            });
+            const deduped = deduplicateClientPosts(fsPosts);
+            deduped.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+            setPosts(deduped);
+            setIsLoading(false);
+          }
+        });
+      } catch (snapErr) {
+        console.warn('[NewsView] Firestore snapshot listener notice:', snapErr);
+      }
+    }
+
+    // 2. Initial load
     loadPosts();
+
+    // 3. Set up 30-minute interval (1,800,000 ms) to check https://gobiernu.cw/nieuw/
+    const THIRTY_MINUTES_MS = 30 * 60 * 1000;
+    const intervalId = setInterval(() => {
+      checkGobiernuEvery30Min(posts);
+    }, THIRTY_MINUTES_MS);
+
+    return () => {
+      clearInterval(intervalId);
+      if (unsubscribeSnapshot) {
+        unsubscribeSnapshot();
+      }
+    };
   }, []);
 
   // Determine category display icon and label
