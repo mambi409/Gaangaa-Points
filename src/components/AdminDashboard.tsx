@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutDashboard,
@@ -38,6 +38,7 @@ import {
   Edit3,
   Trash2,
   Eye,
+  EyeOff,
   UserCheck,
   UserPlus,
   Mail,
@@ -57,13 +58,35 @@ import {
   Newspaper,
   Rss,
   Bell,
-  Landmark
+  Landmark,
+  MapPin,
+  Phone,
+  Building,
+  Building2,
+  Camera,
+  Upload,
+  Calendar,
+  Save,
+  Crosshair,
+  Navigation,
+  FileImage,
+  Coffee,
+  ShoppingBag,
+  ShoppingBasket,
+  Smartphone,
+  UtensilsCrossed,
+  HeartPulse,
+  Cake,
+  HelpCircle,
+  Info
 } from 'lucide-react';
 import {
   AdminTask,
   SystemAuditLog,
   AdminOverviewStats,
   Store,
+  StoreWeeklySchedule,
+  DaySchedule,
   UserWallet,
   Transaction,
   AdminPost,
@@ -79,6 +102,67 @@ import {
   removeMemberAccount,
   verifyUserEmailDirect
 } from '../lib/memberDatabase';
+import {
+  DEFAULT_WEEKLY_SCHEDULE,
+  saveStoreToDatabase,
+  ENRICHED_DEFAULT_STORES
+} from '../lib/storeDatabase';
+
+// Weekly Schedule Days definition
+const SCHEDULE_DAYS: (keyof StoreWeeklySchedule)[] = [
+  'monday',
+  'tuesday',
+  'wednesday',
+  'thursday',
+  'friday',
+  'saturday',
+  'sunday'
+];
+
+const SCHEDULE_DAY_LABELS: Record<keyof StoreWeeklySchedule, { en: string; es: string }> = {
+  monday: { en: 'Monday', es: 'Lunes' },
+  tuesday: { en: 'Tuesday', es: 'Martes' },
+  wednesday: { en: 'Wednesday', es: 'Miércoles' },
+  thursday: { en: 'Thursday', es: 'Jueves' },
+  friday: { en: 'Friday', es: 'Viernes' },
+  saturday: { en: 'Saturday', es: 'Sábado' },
+  sunday: { en: 'Sunday', es: 'Domingo' }
+};
+
+// Preset GPS Coordinates for Curaçao Districts & Commercial Centers
+const CURACAO_GPS_PRESETS = [
+  { name: 'Punda (Handelskade)', lat: 12.1054, lng: -68.9332, city: 'Willemstad' },
+  { name: 'Otrobanda (Kura Hulanda)', lat: 12.1082, lng: -68.9370, city: 'Willemstad' },
+  { name: 'Pietermaai District', lat: 12.1028, lng: -68.9285, city: 'Willemstad' },
+  { name: 'Mambo Beach Boulevard', lat: 12.0885, lng: -68.8982, city: 'Mambo Beach' },
+  { name: 'Jan Thiel Plaza & Spa', lat: 12.0782, lng: -68.8788, city: 'Jan Thiel' },
+  { name: 'Saliña Galleries', lat: 12.1095, lng: -68.9130, city: 'Saliña' },
+  { name: 'Zuikertuintje / Mahaai', lat: 12.1228, lng: -68.8985, city: 'Willemstad' },
+  { name: 'Sambil Mall (Veeris)', lat: 12.1465, lng: -68.9660, city: 'Willemstad' }
+];
+
+const STORE_CATEGORY_LIST = [
+  'Coffee',
+  'Fashion',
+  'Grocery',
+  'Electronics',
+  'Dining',
+  'Wellness',
+  'Bakery',
+  'Beauty',
+  'Services'
+];
+
+const PRESET_HEADER_IMAGES = [
+  { name: 'Artisan Cafe & Coffee', url: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80' },
+  { name: 'Resort Fashion Boutique', url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?auto=format&fit=crop&w=600&q=80' },
+  { name: 'Fresh Supermarket & Organic', url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=600&q=80' },
+  { name: 'Tech Store & Gadgets', url: 'https://images.unsplash.com/photo-1526738549149-8e07eca6c147?auto=format&fit=crop&w=600&q=80' },
+  { name: 'Beachfront Dining & Lounge', url: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?auto=format&fit=crop&w=600&q=80' },
+  { name: 'Spa & Wellness Sanctuary', url: 'https://images.unsplash.com/photo-1540555700478-4be289fbecef?auto=format&fit=crop&w=600&q=80' },
+  { name: 'Courtyard Bistro & Tapas', url: 'https://images.unsplash.com/photo-1544025162-d76694265947?auto=format&fit=crop&w=600&q=80' },
+  { name: 'Garden Bakery & Patisserie', url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?auto=format&fit=crop&w=600&q=80' }
+];
 
 interface AdminDashboardProps {
   adminUser: { username: string; name: string; email?: string; passId?: string } | null;
@@ -133,6 +217,40 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   const [isRetrievingUsers, setIsRetrievingUsers] = useState(false);
   const [lastUsersSyncTime, setLastUsersSyncTime] = useState<string | null>(null);
   const [usersViewMode, setUsersViewMode] = useState<'table' | 'cards'>('table');
+
+  // ================= MERCHANT & USER PROFILE EDIT STATE =================
+  const [editUserTab, setEditUserTab] = useState<'store-profile' | 'location' | 'schedule' | 'contact' | 'loyalty' | 'account'>('store-profile');
+  const [editLinkedStoreId, setEditLinkedStoreId] = useState<string>('');
+  const [editStoreName, setEditStoreName] = useState<string>('');
+  const [editStoreCategory, setEditStoreCategory] = useState<string>('Coffee');
+  const [editStoreDescription, setEditStoreDescription] = useState<string>('');
+  const [editStoreAddress, setEditStoreAddress] = useState<string>('');
+  const [editStoreCity, setEditStoreCity] = useState<string>('Willemstad');
+  const [editStoreLat, setEditStoreLat] = useState<number>(12.1054);
+  const [editStoreLng, setEditStoreLng] = useState<number>(-68.9332);
+  const [editStoreOpenHours, setEditStoreOpenHours] = useState<string>('7:00 AM - 7:00 PM');
+  const [editStorePhone, setEditStorePhone] = useState<string>('+599 9 461-2345');
+  const [editStoreSecondaryPhone, setEditStoreSecondaryPhone] = useState<string>('');
+  const [editStoreEmail, setEditStoreEmail] = useState<string>('');
+  const [editStoreWebsite, setEditStoreWebsite] = useState<string>('');
+  const [editStoreManagerName, setEditStoreManagerName] = useState<string>('');
+  const [editStoreSocialHandle, setEditStoreSocialHandle] = useState<string>('');
+  const [editStorePointsRate, setEditStorePointsRate] = useState<number>(10);
+  const [editStoreLogo, setEditStoreLogo] = useState<string>('');
+  const [editStoreImage, setEditStoreImage] = useState<string>('');
+  const [editStorePerks, setEditStorePerks] = useState<string[]>([]);
+  const [editNewPerkInput, setEditNewPerkInput] = useState<string>('');
+  const [editStoreSchedule, setEditStoreSchedule] = useState<StoreWeeklySchedule>(DEFAULT_WEEKLY_SCHEDULE);
+  const [editPassword, setEditPassword] = useState<string>('');
+  const [editShowPassword, setEditShowPassword] = useState<boolean>(false);
+  const [editShowPin, setEditShowPin] = useState<boolean>(false);
+  const [isLocatingGPS, setIsLocatingGPS] = useState<boolean>(false);
+  const [logoInputMode, setLogoInputMode] = useState<'upload' | 'url'>('upload');
+  const [headerInputMode, setHeaderInputMode] = useState<'upload' | 'url' | 'presets'>('upload');
+  const [isDraggingLogo, setIsDraggingLogo] = useState<boolean>(false);
+  const [isDraggingHeader, setIsDraggingHeader] = useState<boolean>(false);
+  const editLogoFileInputRef = useRef<HTMLInputElement>(null);
+  const editHeaderFileInputRef = useRef<HTMLInputElement>(null);
 
   // Create User Form
   const [newUsername, setNewUsername] = useState('');
@@ -382,20 +500,301 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
+  // ================= MERCHANT STORE DATA MATCHING & EDIT HELPERS =================
+  const findStoreForUser = (user: AdminUserItem, currentStores: Store[]): Store | null => {
+    const uName = (user.username || '').toLowerCase();
+    const uEmail = (user.email || '').toLowerCase();
+    const uFullName = (user.fullName || '').toLowerCase();
+
+    // 1. Direct ID or Username Match
+    const directMatch = currentStores.find((s) => {
+      const sId = (s.id || '').toLowerCase();
+      const sEmail = (s.email || '').toLowerCase();
+      const sName = (s.name || '').toLowerCase();
+      return (
+        sId === uName ||
+        sId === `store-${uName}` ||
+        (uEmail && sEmail === uEmail) ||
+        (uFullName && sName.includes(uFullName)) ||
+        (uName === 'merchant_punda' && sId === 'store-1') ||
+        (uName === 'merchant_otrabanda' && sId === 'store-2') ||
+        (uName === 'merchant_mangusa' && sId === 'store-3') ||
+        (uName === 'merchant_salina' && sId === 'store-4')
+      );
+    });
+
+    if (directMatch) return directMatch;
+
+    // 2. Category / keyword match
+    const categoryMatch = currentStores.find((s) => {
+      if (uName.includes('coffee') && s.category === 'Coffee') return true;
+      if (uName.includes('fashion') && s.category === 'Fashion') return true;
+      if (uName.includes('market') && s.category === 'Grocery') return true;
+      if (uName.includes('tech') && s.category === 'Electronics') return true;
+      if (uName.includes('dining') && s.category === 'Dining') return true;
+      if (uName.includes('spa') && s.category === 'Wellness') return true;
+      if (uName.includes('bakery') && s.category === 'Bakery') return true;
+      return false;
+    });
+
+    return categoryMatch || null;
+  };
+
+  const loadStoreDataIntoEdit = (store: Store | null, user: AdminUserItem) => {
+    if (store) {
+      setEditLinkedStoreId(store.id);
+      setEditStoreName(store.name || user.fullName || '');
+      setEditStoreCategory(store.category || 'Coffee');
+      setEditStoreDescription(store.description || 'Specialty merchant store partner in Curaçao.');
+      setEditStoreAddress(store.address || 'Handelskade 14, Punda, Willemstad, Curaçao');
+      setEditStoreCity(store.city || 'Willemstad');
+      setEditStoreLat(store.lat || 12.1054);
+      setEditStoreLng(store.lng || -68.9332);
+      setEditStoreOpenHours(store.openHours || '7:00 AM - 7:00 PM');
+      setEditStorePhone(store.phone || '+599 9 461-2345');
+      setEditStoreSecondaryPhone(store.secondaryPhone || '');
+      setEditStoreEmail(store.email || user.email || `${user.username}@omniloyalty.internal`);
+      setEditStoreWebsite(store.website || `https://${user.username.replace(/[^a-z0-9]/g, '')}.omniloyalty.cw`);
+      setEditStoreManagerName(store.managerName || user.fullName || '');
+      setEditStoreSocialHandle(store.socialHandle || `@${user.username}`);
+      setEditStorePointsRate(store.pointsRate || 10);
+      setEditStoreLogo(store.logo || '');
+      setEditStoreImage(store.image || 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80');
+      setEditStorePerks(store.perks && store.perks.length > 0 ? store.perks : ['Free Wi-Fi with Harbor View', 'Oat Milk Upgrade', 'Double Points Tuesdays']);
+      setEditStoreSchedule(store.schedule || DEFAULT_WEEKLY_SCHEDULE);
+    } else {
+      // Default template for new or unmatched merchant
+      setEditLinkedStoreId(`store-${user.username}`);
+      setEditStoreName(user.fullName || `${user.username}'s Store`);
+      setEditStoreCategory('Coffee');
+      setEditStoreDescription('Specialty partner merchant store in Curaçao.');
+      setEditStoreAddress('Handelskade 14, Punda, Willemstad, Curaçao');
+      setEditStoreCity('Willemstad');
+      setEditStoreLat(12.1054);
+      setEditStoreLng(-68.9332);
+      setEditStoreOpenHours('7:00 AM - 7:00 PM');
+      setEditStorePhone('+599 9 461-2345');
+      setEditStoreSecondaryPhone('');
+      setEditStoreEmail(user.email || `${user.username}@omniloyalty.internal`);
+      setEditStoreWebsite(`https://${user.username.replace(/[^a-z0-9]/g, '')}.omniloyalty.cw`);
+      setEditStoreManagerName(user.fullName || '');
+      setEditStoreSocialHandle(`@${user.username}`);
+      setEditStorePointsRate(10);
+      setEditStoreLogo('');
+      setEditStoreImage('https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80');
+      setEditStorePerks(['Free Wi-Fi', 'Member Welcome Bonus', 'Double Points Tuesdays']);
+      setEditStoreSchedule(DEFAULT_WEEKLY_SCHEDULE);
+    }
+  };
+
+  const handleOpenEditUser = (
+    user: AdminUserItem,
+    initialTab?: 'store-profile' | 'location' | 'schedule' | 'contact' | 'loyalty' | 'account'
+  ) => {
+    setSelectedUserForEdit({ ...user });
+    setEditPassword(user.password || '');
+    setEditShowPassword(false);
+    setEditShowPin(false);
+    setEditNewPerkInput('');
+
+    const isMerchant = user.role === 'merchant' || user.username.toLowerCase().startsWith('merchant');
+    const matchedStore = findStoreForUser(user, stores) || (isMerchant && stores.length > 0 ? stores[0] : null);
+
+    loadStoreDataIntoEdit(matchedStore, user);
+    setEditUserTab(initialTab || (isMerchant ? 'store-profile' : 'account'));
+  };
+
+  // Process Logo File Upload (supports Drag & Drop and Manual Selection)
+  const processLogoFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast('Please upload a valid image file (PNG, JPG, SVG, WebP)', 'error');
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('Logo file size must not exceed 5MB', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        setEditStoreLogo(dataUrl);
+        showToast('Store logo loaded successfully!', 'success');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Process Header File Upload (supports Drag & Drop and Manual Selection)
+  const processHeaderFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast('Please upload a valid image file (PNG, JPG, WebP)', 'error');
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      showToast('Header banner file size must not exceed 8MB', 'error');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        setEditStoreImage(dataUrl);
+        showToast('Header banner image loaded successfully!', 'success');
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleApplyCoordinatePreset = (preset: { name: string; lat: number; lng: number; city: string }) => {
+    setEditStoreLat(preset.lat);
+    setEditStoreLng(preset.lng);
+    setEditStoreCity(preset.city);
+    showToast(`Applied ${preset.name} coordinates (${preset.lat}, ${preset.lng})`, 'info');
+  };
+
+  const handleCurrentGPSLocation = () => {
+    if (!navigator.geolocation) {
+      showToast('Geolocation is not supported by this browser', 'error');
+      return;
+    }
+    setIsLocatingGPS(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setEditStoreLat(Number(pos.coords.latitude.toFixed(6)));
+        setEditStoreLng(Number(pos.coords.longitude.toFixed(6)));
+        setIsLocatingGPS(false);
+        showToast('Current GPS coordinates captured successfully!', 'success');
+      },
+      (err) => {
+        setIsLocatingGPS(false);
+        showToast('Could not retrieve GPS location: ' + err.message, 'error');
+      },
+      { timeout: 10000, enableHighAccuracy: true }
+    );
+  };
+
+  const handleAddPerk = () => {
+    const trimmed = editNewPerkInput.trim();
+    if (!trimmed) return;
+    if (editStorePerks.includes(trimmed)) {
+      showToast('Perk is already added', 'info');
+      return;
+    }
+    setEditStorePerks([...editStorePerks, trimmed]);
+    setEditNewPerkInput('');
+  };
+
+  const handleRemovePerk = (indexToRemove: number) => {
+    setEditStorePerks(editStorePerks.filter((_, idx) => idx !== indexToRemove));
+  };
+
+  const handleScheduleDayChange = (
+    day: keyof StoreWeeklySchedule,
+    field: keyof DaySchedule,
+    value: boolean | string
+  ) => {
+    setEditStoreSchedule((prev) => ({
+      ...prev,
+      [day]: {
+        ...prev[day],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleApplyScheduleToAllWeekdays = (openTime: string, closeTime: string) => {
+    setEditStoreSchedule((prev) => ({
+      ...prev,
+      monday: { isOpen: true, openTime, closeTime },
+      tuesday: { isOpen: true, openTime, closeTime },
+      wednesday: { isOpen: true, openTime, closeTime },
+      thursday: { isOpen: true, openTime, closeTime },
+      friday: { isOpen: true, openTime, closeTime },
+      saturday: { isOpen: true, openTime, closeTime },
+      sunday: { ...prev.sunday }
+    }));
+    showToast(`Applied ${openTime} - ${closeTime} to all Monday-Saturday shifts`, 'info');
+  };
+
   const handleUpdateUser = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedUserForEdit) return;
     setIsSubmittingUser(true);
+
     try {
-      await saveMemberAccount(selectedUserForEdit);
+      // 1. PIN validation if non-empty
+      const rawPin = (selectedUserForEdit.pinCode || '').trim();
+      let cleanPin: string | undefined = undefined;
+      if (rawPin && rawPin !== 'Unset' && !rawPin.includes('•••••')) {
+        if (!/^\d{5}$/.test(rawPin)) {
+          showToast('Security PIN must be exactly 5 numeric digits (e.g. 12345)', 'error');
+          setIsSubmittingUser(false);
+          return;
+        }
+        cleanPin = rawPin;
+      }
+
+      // 2. Save User Account Record
+      await saveMemberAccount(selectedUserForEdit, editPassword || undefined, cleanPin);
+
+      // 3. If User is a Merchant, construct & save the complete Store Profile
+      if (selectedUserForEdit.role === 'merchant') {
+        const storeIdToUse = editLinkedStoreId || `store-${selectedUserForEdit.username.toLowerCase()}`;
+        const existingStore = stores.find((s) => s.id === storeIdToUse);
+
+        const storeToSave: Store = {
+          id: storeIdToUse,
+          name: editStoreName.trim() || selectedUserForEdit.fullName || 'Partner Store',
+          category: editStoreCategory || 'Coffee',
+          description: editStoreDescription.trim() || 'Specialty merchant partner in Curaçao.',
+          address: editStoreAddress.trim() || 'Handelskade 14, Punda, Willemstad, Curaçao',
+          city: editStoreCity.trim() || 'Willemstad',
+          lat: Number(editStoreLat) || 12.1054,
+          lng: Number(editStoreLng) || -68.9332,
+          openHours: editStoreOpenHours.trim() || '7:00 AM - 7:00 PM',
+          phone: editStorePhone.trim() || '+599 9 461-2345',
+          secondaryPhone: editStoreSecondaryPhone.trim(),
+          email: editStoreEmail.trim() || selectedUserForEdit.email,
+          website: editStoreWebsite.trim(),
+          managerName: editStoreManagerName.trim() || selectedUserForEdit.fullName,
+          socialHandle: editStoreSocialHandle.trim() || `@${selectedUserForEdit.username}`,
+          pointsRate: Number(editStorePointsRate) || 10,
+          pointsBalance: selectedUserForEdit.pointsBalance ?? 10000,
+          image: editStoreImage || existingStore?.image || 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80',
+          logo: editStoreLogo || existingStore?.logo || '',
+          rating: existingStore?.rating || 4.9,
+          reviewCount: existingStore?.reviewCount || 150,
+          perks: editStorePerks.length > 0 ? editStorePerks : ['Free Wi-Fi', 'Member Welcome Bonus', 'Double Points Tuesdays'],
+          schedule: editStoreSchedule,
+          featuredReward: existingStore?.featuredReward || 'Member Exclusive Discount'
+        };
+
+        await saveStoreToDatabase(storeToSave);
+
+        // Update local stores state
+        setStores((prevStores) => {
+          const exists = prevStores.some((s) => s.id === storeToSave.id);
+          if (exists) {
+            return prevStores.map((s) => (s.id === storeToSave.id ? storeToSave : s));
+          } else {
+            return [...prevStores, storeToSave];
+          }
+        });
+
+        showToast(`Merchant @${selectedUserForEdit.username} & Store '${storeToSave.name}' updated & synchronized to Firestore!`, 'success');
+      } else {
+        showToast(`User @${selectedUserForEdit.username} updated successfully!`, 'success');
+      }
+
       setRegisteredUsers((prev) =>
         prev.map((u) => (u.username.toLowerCase() === selectedUserForEdit.username.toLowerCase() ? selectedUserForEdit : u))
       );
-      showToast(`User @${selectedUserForEdit.username} updated successfully!`, 'success');
+
       setSelectedUserForEdit(null);
       fetchAdminData();
     } catch (err) {
-      showToast('Error updating user', 'error');
+      showToast('Error updating user account or store profile', 'error');
     } finally {
       setIsSubmittingUser(false);
     }
@@ -1289,19 +1688,42 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {stores.map((s) => (
-                    <div key={s.id} className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between">
+                    <div key={s.id} className="p-4 rounded-xl bg-slate-900 border border-slate-800 flex flex-col justify-between hover:border-slate-700 transition">
                       <div>
                         <div className="flex items-center justify-between">
-                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs">{s.category}</span>
+                          <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs font-semibold">{s.category}</span>
                           <span className="text-amber-400 font-semibold text-xs">★ {s.rating}</span>
                         </div>
                         <h4 className="text-base font-bold text-white mt-2">{s.name}</h4>
                         <p className="text-xs text-slate-400 mt-1">{s.address}, {s.city}</p>
                         <p className="text-xs text-indigo-400 mt-2 font-medium">{s.pointsRate} points per $1 spent</p>
                       </div>
-                      <div className="mt-4 pt-2 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                      <div className="mt-4 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
                         <span>{s.phone}</span>
-                        <span className="text-emerald-400 font-semibold">Active POS</span>
+                        <button
+                          onClick={() => {
+                            // Find corresponding merchant user or create placeholder to edit
+                            const matchingUser = registeredUsers.find(
+                              (u) =>
+                                u.username.toLowerCase() === s.id.toLowerCase() ||
+                                (u.role === 'merchant' && (u.fullName?.toLowerCase() === s.name.toLowerCase() || u.email === s.email))
+                            ) || {
+                              username: s.id.replace(/^store-/, ''),
+                              fullName: s.name,
+                              email: s.email || `${s.id}@omniloyalty.internal`,
+                              role: 'merchant' as UserRole,
+                              currentTier: 'Gold' as UserTier,
+                              pointsBalance: s.pointsBalance || 10000,
+                              passId: `OMNI-POS-${s.id.toUpperCase().slice(0, 6)}`,
+                              pinCode: '12345'
+                            };
+                            handleOpenEditUser(matchingUser, 'store-profile');
+                          }}
+                          className="px-2.5 py-1 rounded bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition flex items-center gap-1"
+                        >
+                          <Edit3 className="w-3 h-3" />
+                          <span>Edit Profile</span>
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -2113,9 +2535,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
                                 {/* Edit Button */}
                                 <button
-                                  onClick={() => setSelectedUserForEdit(user)}
+                                  onClick={() => handleOpenEditUser(user)}
                                   className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-                                  title="Edit Member Account"
+                                  title="Edit Member Account & Store Profile"
                                 >
                                   <Edit3 className="w-4 h-4" />
                                 </button>
@@ -2268,9 +2690,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                             </button>
                           )}
                           <button
-                            onClick={() => setSelectedUserForEdit(user)}
+                            onClick={() => handleOpenEditUser(user)}
                             className="p-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 transition"
-                            title="Edit Account"
+                            title="Edit Account & Store Profile"
                           >
                             <Edit3 className="w-3.5 h-3.5" />
                           </button>
@@ -2309,138 +2731,221 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       {/* MODAL 1: VIEW USER DETAILS & POINT BALANCE                   */}
       {/* ============================================================ */}
       <AnimatePresence>
-        {selectedUserForDetails && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-6 text-slate-100 relative"
-            >
-              <button
-                onClick={() => setSelectedUserForDetails(null)}
-                className="absolute top-4 right-4 p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
+        {selectedUserForDetails && (() => {
+          const isMerchant = selectedUserForDetails.role === 'merchant';
+          const matchedStore = isMerchant ? findStoreForUser(selectedUserForDetails, stores) : null;
+
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.95 }}
+                className="w-full max-w-2xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-6 text-slate-100 relative my-8"
               >
-                <X className="w-5 h-5" />
-              </button>
-
-              {/* Header */}
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-indigo-500/20">
-                  {selectedUserForDetails.fullName.charAt(0)}
-                </div>
-                <div>
-                  <h3 className="text-xl font-bold text-white">{selectedUserForDetails.fullName}</h3>
-                  <p className="text-sm text-slate-400 font-mono">@{selectedUserForDetails.username}</p>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${getRoleBadge(selectedUserForDetails.role)}`}>
-                      {selectedUserForDetails.role}
-                    </span>
-                    <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${getTierBadge(selectedUserForDetails.currentTier)}`}>
-                      {selectedUserForDetails.currentTier || 'Bronze'} Tier
-                    </span>
-                    {selectedUserForDetails.emailVerified !== false && selectedUserForDetails.status !== 'pending_verification' ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
-                        <CheckCircle2 className="w-3 h-3 text-emerald-400" />
-                        Verified
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30">
-                        <Clock className="w-3 h-3 text-amber-400" />
-                        Pending Verification
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {/* Point Balance Showcase Card */}
-              <div className="p-4 rounded-xl bg-gradient-to-br from-slate-950 to-slate-900 border border-indigo-500/30 relative overflow-hidden">
-                <div className="absolute top-0 right-0 p-3 opacity-10">
-                  <Award className="w-24 h-24 text-indigo-400" />
-                </div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-300">Current Point Balance</p>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-3xl font-extrabold text-white">
-                    {(selectedUserForDetails.pointsBalance ?? 0).toLocaleString()}
-                  </span>
-                  <span className="text-sm font-semibold text-indigo-400">OmniPoints</span>
-                </div>
-                <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
-                  <span>Lifetime Earned: {(selectedUserForDetails.lifetimePoints ?? selectedUserForDetails.pointsBalance ?? 0).toLocaleString()} pts</span>
-                  <button
-                    onClick={() => {
-                      setSelectedUserForAdjust(selectedUserForDetails);
-                      setIsAdjustModalOpen(true);
-                    }}
-                    className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
-                  >
-                    <Sparkles className="w-3.5 h-3.5" />
-                    <span>Adjust Points</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Credentials & Info */}
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
-                  <span className="text-slate-500 font-medium">Pass ID</span>
-                  <p className="font-mono text-slate-200 mt-1 font-semibold">{selectedUserForDetails.passId}</p>
-                </div>
-                <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
-                  <span className="text-slate-500 font-medium">Security PIN</span>
-                  <p className="font-mono text-slate-200 mt-1 font-semibold">{selectedUserForDetails.pinCode || '•••••'}</p>
-                </div>
-                <div className="col-span-2 p-3 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center justify-between">
-                  <div>
-                    <span className="text-slate-500 font-medium">Email Address</span>
-                    <p className="text-slate-200 mt-1">{selectedUserForDetails.email}</p>
-                  </div>
-                  {selectedUserForDetails.emailVerified === false || selectedUserForDetails.status === 'pending_verification' ? (
-                    <button
-                      onClick={() => handleAdminVerifyEmail(selectedUserForDetails.username)}
-                      className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow transition"
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Verify & Activate</span>
-                    </button>
-                  ) : null}
-                </div>
-              </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-3 pt-2">
-                <button
-                  onClick={() => {
-                    setSelectedUserForEdit(selectedUserForDetails);
-                    setSelectedUserForDetails(null);
-                  }}
-                  className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition cursor-pointer"
-                >
-                  Edit Profile
-                </button>
-                {selectedUserForDetails.username.toLowerCase() !== 'mambiadmin' && (
-                  <button
-                    onClick={() => {
-                      promptDeleteUser(selectedUserForDetails);
-                    }}
-                    className="px-3.5 py-2.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
-                    title="Delete Account"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    <span>Delete</span>
-                  </button>
-                )}
                 <button
                   onClick={() => setSelectedUserForDetails(null)}
-                  className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                  className="absolute top-4 right-4 p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
                 >
-                  Close
+                  <X className="w-5 h-5" />
                 </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
+
+                {/* Header */}
+                <div className="flex items-center gap-4">
+                  <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white text-2xl font-bold shadow-lg shadow-indigo-500/20 shrink-0">
+                    {selectedUserForDetails.fullName.charAt(0)}
+                  </div>
+                  <div>
+                    <h3 className="text-xl font-bold text-white">{selectedUserForDetails.fullName}</h3>
+                    <p className="text-sm text-slate-400 font-mono">@{selectedUserForDetails.username}</p>
+                    <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${getRoleBadge(selectedUserForDetails.role)}`}>
+                        {selectedUserForDetails.role}
+                      </span>
+                      <span className={`px-2 py-0.5 rounded text-[11px] font-semibold border ${getTierBadge(selectedUserForDetails.currentTier)}`}>
+                        {selectedUserForDetails.currentTier || 'Bronze'} Tier
+                      </span>
+                      {selectedUserForDetails.emailVerified !== false && selectedUserForDetails.status !== 'pending_verification' ? (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/20">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-400" />
+                          Verified
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold bg-amber-500/10 text-amber-300 border border-amber-500/30">
+                          <Clock className="w-3 h-3 text-amber-400" />
+                          Pending Verification
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Point Balance Showcase Card */}
+                <div className="p-4 rounded-xl bg-gradient-to-br from-slate-950 to-slate-900 border border-indigo-500/30 relative overflow-hidden">
+                  <div className="absolute top-0 right-0 p-3 opacity-10">
+                    <Award className="w-24 h-24 text-indigo-400" />
+                  </div>
+                  <p className="text-xs font-semibold uppercase tracking-wider text-indigo-300">Current Point Balance</p>
+                  <div className="mt-1 flex items-baseline gap-2">
+                    <span className="text-3xl font-extrabold text-white">
+                      {(selectedUserForDetails.pointsBalance ?? 0).toLocaleString()}
+                    </span>
+                    <span className="text-sm font-semibold text-indigo-400">OmniPoints</span>
+                  </div>
+                  <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+                    <span>Lifetime Earned: {(selectedUserForDetails.lifetimePoints ?? selectedUserForDetails.pointsBalance ?? 0).toLocaleString()} pts</span>
+                    <button
+                      onClick={() => {
+                        setSelectedUserForAdjust(selectedUserForDetails);
+                        setIsAdjustModalOpen(true);
+                      }}
+                      className="text-xs font-semibold text-indigo-400 hover:text-indigo-300 flex items-center gap-1"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>Adjust Points</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* MERCHANT STORE PROFILE SUMMARY (if merchant) */}
+                {isMerchant && (
+                  <div className="p-4 rounded-xl bg-slate-950/70 border border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <StoreIcon className="w-4 h-4 text-indigo-400" />
+                        <h4 className="text-sm font-bold text-white uppercase tracking-wider">
+                          Linked Partner Store Profile
+                        </h4>
+                      </div>
+                      {matchedStore && (
+                        <span className="px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-300 border border-indigo-700/60 text-[11px] font-semibold">
+                          {matchedStore.category}
+                        </span>
+                      )}
+                    </div>
+
+                    {matchedStore ? (
+                      <div className="space-y-3 text-xs">
+                        <div className="flex items-center gap-3">
+                          {matchedStore.image && (
+                            <img
+                              src={matchedStore.image}
+                              alt={matchedStore.name}
+                              referrerPolicy="no-referrer"
+                              className="w-16 h-16 rounded-lg object-cover border border-slate-700 shrink-0"
+                            />
+                          )}
+                          <div>
+                            <p className="text-sm font-bold text-white">{matchedStore.name}</p>
+                            <p className="text-slate-400 text-xs mt-0.5">{matchedStore.address}, {matchedStore.city}</p>
+                            <p className="text-slate-500 font-mono text-[11px] mt-0.5">
+                              GPS: {matchedStore.lat}, {matchedStore.lng} • Rating: ★ {matchedStore.rating}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
+                          <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                            <span className="text-slate-500">Operating Hours</span>
+                            <p className="text-slate-200 font-medium">{matchedStore.openHours || '7:00 AM - 7:00 PM'}</p>
+                          </div>
+                          <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                            <span className="text-slate-500">Store Phone</span>
+                            <p className="text-slate-200 font-medium">{matchedStore.phone || 'Not set'}</p>
+                          </div>
+                          <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                            <span className="text-slate-500">Manager</span>
+                            <p className="text-slate-200 font-medium">{matchedStore.managerName || selectedUserForDetails.fullName}</p>
+                          </div>
+                          <div className="p-2 rounded bg-slate-900 border border-slate-800">
+                            <span className="text-slate-500">Earning Rate</span>
+                            <p className="text-indigo-300 font-semibold">{matchedStore.pointsRate || 10} pts / $1 spent</p>
+                          </div>
+                        </div>
+
+                        {matchedStore.perks && matchedStore.perks.length > 0 && (
+                          <div className="pt-2">
+                            <span className="text-slate-500 block mb-1">Active Loyalty Perks:</span>
+                            <div className="flex flex-wrap gap-1.5">
+                              {matchedStore.perks.map((p, i) => (
+                                <span key={i} className="px-2 py-0.5 rounded-full bg-slate-900 border border-slate-700 text-slate-300 text-[11px]">
+                                  ✓ {p}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-xs text-amber-400/90 bg-amber-500/10 p-2.5 rounded-lg border border-amber-500/20">
+                        No linked store profile registered yet. Click &quot;Edit Merchant Profile&quot; below to load and configure the store branding, location, hours, and perks.
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Credentials & Info */}
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
+                    <span className="text-slate-500 font-medium">Pass ID / POS Terminal</span>
+                    <p className="font-mono text-slate-200 mt-1 font-semibold">{selectedUserForDetails.passId}</p>
+                  </div>
+                  <div className="p-3 rounded-lg bg-slate-950/60 border border-slate-800">
+                    <span className="text-slate-500 font-medium">Security PIN</span>
+                    <p className="font-mono text-slate-200 mt-1 font-semibold">{selectedUserForDetails.pinCode || '•••••'}</p>
+                  </div>
+                  <div className="col-span-2 p-3 rounded-lg bg-slate-950/60 border border-slate-800 flex items-center justify-between">
+                    <div>
+                      <span className="text-slate-500 font-medium">Email Address</span>
+                      <p className="text-slate-200 mt-1">{selectedUserForDetails.email}</p>
+                    </div>
+                    {selectedUserForDetails.emailVerified === false || selectedUserForDetails.status === 'pending_verification' ? (
+                      <button
+                        onClick={() => handleAdminVerifyEmail(selectedUserForDetails.username)}
+                        className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs flex items-center gap-1.5 shadow transition"
+                      >
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Verify & Activate</span>
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-3 pt-2">
+                  <button
+                    onClick={() => {
+                      handleOpenEditUser(selectedUserForDetails, isMerchant ? 'store-profile' : 'account');
+                      setSelectedUserForDetails(null);
+                    }}
+                    className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition cursor-pointer flex items-center justify-center gap-1.5 shadow-lg shadow-indigo-600/20"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>{isMerchant ? 'Edit Merchant & Store Profile' : 'Edit Member Account'}</span>
+                  </button>
+                  {selectedUserForDetails.username.toLowerCase() !== 'mambiadmin' && (
+                    <button
+                      onClick={() => {
+                        promptDeleteUser(selectedUserForDetails);
+                      }}
+                      className="px-3.5 py-2.5 rounded-lg bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer"
+                      title="Delete Account"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                      <span>Delete</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setSelectedUserForDetails(null)}
+                    className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                  >
+                    Close
+                  </button>
+                </div>
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* ============================================================ */}
@@ -2591,124 +3096,974 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       </AnimatePresence>
 
       {/* ============================================================ */}
-      {/* MODAL 3: EDIT USER DETAILS                                   */}
+      {/* MODAL 3: COMPREHENSIVE MERCHANT STORE & ACCOUNT EDITOR       */}
       {/* ============================================================ */}
       <AnimatePresence>
-        {selectedUserForEdit && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95 }}
-              className="w-full max-w-lg rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-5 text-slate-100 relative"
-            >
-              <div className="flex items-center justify-between pb-3 border-b border-slate-800">
-                <div className="flex items-center gap-2.5">
-                  <Edit3 className="w-5 h-5 text-indigo-400" />
-                  <h3 className="text-lg font-bold text-white">Edit User: @{selectedUserForEdit.username}</h3>
-                </div>
-                <button
-                  onClick={() => setSelectedUserForEdit(null)}
-                  className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
+        {selectedUserForEdit && (() => {
+          const isMerchant = selectedUserForEdit.role === 'merchant';
 
-              <form onSubmit={handleUpdateUser} className="space-y-4">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Full Name</label>
-                    <input
-                      type="text"
-                      value={selectedUserForEdit.fullName}
-                      onChange={(e) => setSelectedUserForEdit({ ...selectedUserForEdit, fullName: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
-                    />
+          return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0.96 }}
+                className="w-full max-w-4xl rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-5 text-slate-100 relative my-6 max-h-[92vh] flex flex-col"
+              >
+                {/* Modal Header */}
+                <div className="flex items-center justify-between pb-3 border-b border-slate-800 shrink-0">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2.5 rounded-xl ${isMerchant ? 'bg-indigo-600/20 text-indigo-400 border border-indigo-500/30' : 'bg-slate-800 text-slate-300'}`}>
+                      {isMerchant ? <StoreIcon className="w-5 h-5" /> : <Edit3 className="w-5 h-5" />}
+                    </div>
+                    <div>
+                      <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                        <span>{isMerchant ? 'Edit Merchant Store & Profile' : 'Edit Member Account'}</span>
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-slate-800 text-indigo-300 font-mono font-normal">
+                          @{selectedUserForEdit.username}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-400">
+                        {isMerchant
+                          ? 'Load and manage full merchant profile data including store branding, GPS coordinates, operating hours matrix, contacts, perks, and POS credentials.'
+                          : 'Update member identity, tier level, point balances, and security credentials.'}
+                      </p>
+                    </div>
                   </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Email</label>
-                    <input
-                      type="email"
-                      value={selectedUserForEdit.email}
-                      onChange={(e) => setSelectedUserForEdit({ ...selectedUserForEdit, email: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Role</label>
-                    <select
-                      value={selectedUserForEdit.role}
-                      onChange={(e: any) => setSelectedUserForEdit({ ...selectedUserForEdit, role: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
-                    >
-                      <option value="user">Customer</option>
-                      <option value="merchant">Merchant POS</option>
-                      <option value="admin">Administrator</option>
-                    </select>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Tier</label>
-                    <select
-                      value={selectedUserForEdit.currentTier}
-                      onChange={(e: any) => setSelectedUserForEdit({ ...selectedUserForEdit, currentTier: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
-                    >
-                      <option value="Bronze">Bronze Tier</option>
-                      <option value="Silver">Silver Tier</option>
-                      <option value="Gold">Gold Tier</option>
-                      <option value="Platinum">Platinum Tier</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Points Balance</label>
-                    <input
-                      type="number"
-                      value={selectedUserForEdit.pointsBalance ?? 0}
-                      onChange={(e) => setSelectedUserForEdit({ ...selectedUserForEdit, pointsBalance: parseInt(e.target.value, 10) || 0 })}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Security PIN</label>
-                    <input
-                      type="text"
-                      value={selectedUserForEdit.pinCode || ''}
-                      onChange={(e) => setSelectedUserForEdit({ ...selectedUserForEdit, pinCode: e.target.value })}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm font-mono focus:border-indigo-500 focus:outline-none"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3 pt-3">
                   <button
-                    type="submit"
-                    disabled={isSubmittingUser}
-                    className="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition"
-                  >
-                    {isSubmittingUser ? 'Saving...' : 'Save Changes'}
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setSelectedUserForEdit(null)}
-                    className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                    className="p-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-white transition"
                   >
-                    Cancel
+                    <X className="w-5 h-5" />
                   </button>
                 </div>
-              </form>
-            </motion.div>
-          </div>
-        )}
+
+                {/* QUICK LOAD / SYNC STORE BAR (FOR MERCHANTS) */}
+                {isMerchant && (
+                  <div className="p-3 rounded-xl bg-slate-950/80 border border-indigo-500/30 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
+                      <span className="text-xs font-semibold text-slate-300">
+                        Store Profile Data Source:
+                      </span>
+                      <select
+                        value={editLinkedStoreId}
+                        onChange={(e) => {
+                          const storeId = e.target.value;
+                          setEditLinkedStoreId(storeId);
+                          const storeFound = stores.find((s) => s.id === storeId);
+                          if (storeFound) {
+                            loadStoreDataIntoEdit(storeFound, selectedUserForEdit);
+                            showToast(`Loaded data from store: ${storeFound.name}`, 'info');
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs font-medium focus:border-indigo-500 focus:outline-none"
+                      >
+                        <option value={`store-${selectedUserForEdit.username}`}>Auto-Linked (store-{selectedUserForEdit.username})</option>
+                        {stores.map((s) => (
+                          <option key={s.id} value={s.id}>
+                            {s.name} ({s.category} - {s.city})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const matched = findStoreForUser(selectedUserForEdit, stores) || (stores.length > 0 ? stores[0] : null);
+                          loadStoreDataIntoEdit(matched, selectedUserForEdit);
+                          showToast('Reloaded store profile data from Firestore database!', 'success');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition flex items-center gap-1"
+                        title="Reload full profile data as shown in Merchant Profile View"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        <span>🔄 Load Store Profile Data</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditStoreName(selectedUserForEdit.fullName || 'Artisan Coffee & Bistro');
+                          setEditStoreCategory('Coffee');
+                          setEditStoreDescription('Authentic Curaçao coffee roast, fresh pastries, harbor view terrace, and loyalty rewards.');
+                          setEditStoreAddress('Handelskade 14, Punda, Willemstad, Curaçao');
+                          setEditStoreCity('Willemstad');
+                          setEditStoreLat(12.1054);
+                          setEditStoreLng(-68.9332);
+                          setEditStoreOpenHours('7:00 AM - 7:00 PM');
+                          setEditStorePhone('+599 9 461-2345');
+                          setEditStoreEmail(selectedUserForEdit.email || 'punda.coffee@omniloyalty.cw');
+                          setEditStoreWebsite('https://pundacoffee.omniloyalty.cw');
+                          setEditStoreManagerName(selectedUserForEdit.fullName || 'Elena Gomez');
+                          setEditStoreSocialHandle(`@${selectedUserForEdit.username}`);
+                          setEditStorePointsRate(10);
+                          setEditStorePerks(['Free Wi-Fi with Harbor View', 'Oat Milk Upgrade', 'Double Points Tuesdays', '10% Off Pastry with Espresso']);
+                          setEditStoreImage('https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80');
+                          showToast('Applied Curaçao Partner Store starter template!', 'info');
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition flex items-center gap-1"
+                        title="Auto-populate with typical Curaçao merchant profile structure"
+                      >
+                        <Zap className="w-3.5 h-3.5 text-amber-400" />
+                        <span>⚡ Auto-Fill Template</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* EDIT TABS NAVIGATION */}
+                <div className="flex items-center gap-1 border-b border-slate-800 pb-1 overflow-x-auto shrink-0">
+                  {isMerchant ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEditUserTab('store-profile')}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                          editUserTab === 'store-profile'
+                            ? 'bg-indigo-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        }`}
+                      >
+                        <StoreIcon className="w-3.5 h-3.5" />
+                        <span>Store Branding</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditUserTab('location')}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                          editUserTab === 'location'
+                            ? 'bg-indigo-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        }`}
+                      >
+                        <MapPin className="w-3.5 h-3.5" />
+                        <span>Location & GPS</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditUserTab('schedule')}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                          editUserTab === 'schedule'
+                            ? 'bg-indigo-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        }`}
+                      >
+                        <Clock className="w-3.5 h-3.5" />
+                        <span>Hours & Schedule</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditUserTab('contact')}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                          editUserTab === 'contact'
+                            ? 'bg-indigo-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        }`}
+                      >
+                        <Phone className="w-3.5 h-3.5" />
+                        <span>Contacts & Manager</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditUserTab('loyalty')}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                          editUserTab === 'loyalty'
+                            ? 'bg-indigo-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        }`}
+                      >
+                        <Award className="w-3.5 h-3.5" />
+                        <span>Loyalty & Perks</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setEditUserTab('account')}
+                        className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold transition whitespace-nowrap ${
+                          editUserTab === 'account'
+                            ? 'bg-indigo-600 text-white shadow'
+                            : 'text-slate-400 hover:text-white hover:bg-slate-800'
+                        }`}
+                      >
+                        <Lock className="w-3.5 h-3.5" />
+                        <span>Account & Security</span>
+                      </button>
+                    </>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEditUserTab('account')}
+                        className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold bg-indigo-600 text-white shadow"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Member Account & Security</span>
+                      </button>
+                    </>
+                  )}
+                </div>
+
+                {/* FORM CONTENT (SCROLLABLE) */}
+                <form onSubmit={handleUpdateUser} className="space-y-4 overflow-y-auto pr-1 flex-1">
+                  {/* TAB 1: STORE PROFILE & BRANDING */}
+                  {isMerchant && editUserTab === 'store-profile' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Store Business Name *</label>
+                          <input
+                            type="text"
+                            required
+                            value={editStoreName}
+                            onChange={(e) => setEditStoreName(e.target.value)}
+                            placeholder="e.g. Punda Artisan Coffee"
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Store Category *</label>
+                          <select
+                            value={editStoreCategory}
+                            onChange={(e) => setEditStoreCategory(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          >
+                            {STORE_CATEGORY_LIST.map((cat) => (
+                              <option key={cat} value={cat}>{cat}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Store Bio & Description</label>
+                        <textarea
+                          rows={3}
+                          value={editStoreDescription}
+                          onChange={(e) => setEditStoreDescription(e.target.value)}
+                          placeholder="Describe the store specialties, atmosphere, signature products, and partner benefits..."
+                          className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                        />
+                      </div>
+
+                      {/* Store Logo Management */}
+                      <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-semibold text-slate-300 uppercase flex items-center gap-1.5">
+                            <Camera className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>Store Logo / Emblem</span>
+                          </label>
+                          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                            <button
+                              type="button"
+                              onClick={() => setLogoInputMode('upload')}
+                              className={`px-2 py-0.5 rounded ${logoInputMode === 'upload' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+                            >
+                              Upload File
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setLogoInputMode('url')}
+                              className={`px-2 py-0.5 rounded ${logoInputMode === 'url' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+                            >
+                              Image URL
+                            </button>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-4">
+                          <div className="w-16 h-16 rounded-xl bg-slate-900 border border-slate-700 overflow-hidden flex items-center justify-center shrink-0">
+                            {editStoreLogo ? (
+                              <img src={editStoreLogo} alt="Logo" referrerPolicy="no-referrer" className="w-full h-full object-cover" />
+                            ) : (
+                              <StoreIcon className="w-7 h-7 text-slate-600" />
+                            )}
+                          </div>
+
+                          <div className="flex-1">
+                            {logoInputMode === 'upload' ? (
+                              <div
+                                onDragOver={(e) => {
+                                  e.preventDefault();
+                                  setIsDraggingLogo(true);
+                                }}
+                                onDragLeave={() => setIsDraggingLogo(false)}
+                                onDrop={(e) => {
+                                  e.preventDefault();
+                                  setIsDraggingLogo(false);
+                                  if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                    processLogoFile(e.dataTransfer.files[0]);
+                                  }
+                                }}
+                                onClick={() => editLogoFileInputRef.current?.click()}
+                                className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition ${
+                                  isDraggingLogo
+                                    ? 'border-indigo-500 bg-indigo-500/10'
+                                    : 'border-slate-700 hover:border-slate-600 bg-slate-900/50'
+                                }`}
+                              >
+                                <input
+                                  ref={editLogoFileInputRef}
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => {
+                                    if (e.target.files && e.target.files[0]) {
+                                      processLogoFile(e.target.files[0]);
+                                    }
+                                  }}
+                                />
+                                <p className="text-xs text-slate-300 font-medium">
+                                  Drag & drop store logo or <span className="text-indigo-400 underline">browse device</span>
+                                </p>
+                                <p className="text-[10px] text-slate-500 mt-0.5">PNG, JPG, SVG, WebP up to 5MB</p>
+                              </div>
+                            ) : (
+                              <input
+                                type="url"
+                                value={editStoreLogo}
+                                onChange={(e) => setEditStoreLogo(e.target.value)}
+                                placeholder="https://example.com/logo.png"
+                                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                              />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Store Header Banner Image */}
+                      <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="text-xs font-semibold text-slate-300 uppercase flex items-center gap-1.5">
+                            <ImageIcon className="w-3.5 h-3.5 text-indigo-400" />
+                            <span>Store Header & Showcase Image</span>
+                          </label>
+                          <div className="flex items-center gap-1 bg-slate-900 p-0.5 rounded-lg border border-slate-800 text-[11px]">
+                            <button
+                              type="button"
+                              onClick={() => setHeaderInputMode('upload')}
+                              className={`px-2 py-0.5 rounded ${headerInputMode === 'upload' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+                            >
+                              Upload File
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setHeaderInputMode('presets')}
+                              className={`px-2 py-0.5 rounded ${headerInputMode === 'presets' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+                            >
+                              Presets
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setHeaderInputMode('url')}
+                              className={`px-2 py-0.5 rounded ${headerInputMode === 'url' ? 'bg-indigo-600 text-white' : 'text-slate-400'}`}
+                            >
+                              URL
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Banner Preview */}
+                        {editStoreImage && (
+                          <div className="relative h-28 w-full rounded-lg overflow-hidden border border-slate-700">
+                            <img
+                              src={editStoreImage}
+                              alt="Store Banner Preview"
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                            <div className="absolute bottom-2 left-2 px-2 py-0.5 rounded bg-slate-950/80 backdrop-blur-sm text-[10px] text-slate-200">
+                              Active Showcase Banner
+                            </div>
+                          </div>
+                        )}
+
+                        {headerInputMode === 'upload' && (
+                          <div
+                            onDragOver={(e) => {
+                              e.preventDefault();
+                              setIsDraggingHeader(true);
+                            }}
+                            onDragLeave={() => setIsDraggingHeader(false)}
+                            onDrop={(e) => {
+                              e.preventDefault();
+                              setIsDraggingHeader(false);
+                              if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+                                processHeaderFile(e.dataTransfer.files[0]);
+                              }
+                            }}
+                            onClick={() => editHeaderFileInputRef.current?.click()}
+                            className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition ${
+                              isDraggingHeader
+                                ? 'border-indigo-500 bg-indigo-500/10'
+                                : 'border-slate-700 hover:border-slate-600 bg-slate-900/50'
+                            }`}
+                          >
+                            <input
+                              ref={editHeaderFileInputRef}
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              onChange={(e) => {
+                                if (e.target.files && e.target.files[0]) {
+                                  processHeaderFile(e.target.files[0]);
+                                }
+                              }}
+                            />
+                            <p className="text-xs text-slate-300 font-medium">
+                              Drag & drop header image banner or <span className="text-indigo-400 underline">browse file</span>
+                            </p>
+                            <p className="text-[10px] text-slate-500 mt-0.5">Recommended 1200x600 px (PNG, JPG, WebP up to 8MB)</p>
+                          </div>
+                        )}
+
+                        {headerInputMode === 'presets' && (
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {PRESET_HEADER_IMAGES.map((preset, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => {
+                                  setEditStoreImage(preset.url);
+                                  showToast(`Selected preset: ${preset.name}`, 'info');
+                                }}
+                                className="group relative h-16 rounded-lg overflow-hidden border border-slate-700 hover:border-indigo-500 transition text-left"
+                              >
+                                <img src={preset.url} alt={preset.name} referrerPolicy="no-referrer" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                                <div className="absolute inset-0 bg-slate-950/60 group-hover:bg-slate-950/40 p-1.5 flex items-end">
+                                  <span className="text-[10px] text-white font-medium truncate">{preset.name}</span>
+                                </div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {headerInputMode === 'url' && (
+                          <input
+                            type="url"
+                            value={editStoreImage}
+                            onChange={(e) => setEditStoreImage(e.target.value)}
+                            placeholder="https://images.unsplash.com/photo-..."
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                          />
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 2: LOCATION & GPS */}
+                  {isMerchant && editUserTab === 'location' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="md:col-span-2">
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Street Address</label>
+                          <input
+                            type="text"
+                            value={editStoreAddress}
+                            onChange={(e) => setEditStoreAddress(e.target.value)}
+                            placeholder="e.g. Handelskade 14, Punda"
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">District / City</label>
+                          <select
+                            value={editStoreCity}
+                            onChange={(e) => setEditStoreCity(e.target.value)}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          >
+                            <option value="Willemstad">Willemstad</option>
+                            <option value="Punda">Punda</option>
+                            <option value="Otrobanda">Otrobanda</option>
+                            <option value="Pietermaai">Pietermaai</option>
+                            <option value="Mambo Beach">Mambo Beach</option>
+                            <option value="Jan Thiel">Jan Thiel</option>
+                            <option value="Saliña">Saliña</option>
+                            <option value="Westpunt">Westpunt</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      {/* GPS Coordinates & Quick Picker */}
+                      <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                              <Compass className="w-3.5 h-3.5 text-indigo-400" />
+                              <span>Map Coordinates (Latitude & Longitude)</span>
+                            </h4>
+                            <p className="text-[11px] text-slate-400 mt-0.5">Used for pinpointing store marker on customer map & navigation route</p>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={handleCurrentGPSLocation}
+                            disabled={isLocatingGPS}
+                            className="px-2.5 py-1.5 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition flex items-center gap-1.5"
+                          >
+                            <Crosshair className={`w-3.5 h-3.5 ${isLocatingGPS ? 'animate-spin' : ''}`} />
+                            <span>{isLocatingGPS ? 'Locating...' : 'Get Current GPS'}</span>
+                          </button>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Latitude (Lat)</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={editStoreLat}
+                              onChange={(e) => setEditStoreLat(parseFloat(e.target.value) || 0)}
+                              className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm font-mono focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Longitude (Lng)</label>
+                            <input
+                              type="number"
+                              step="any"
+                              value={editStoreLng}
+                              onChange={(e) => setEditStoreLng(parseFloat(e.target.value) || 0)}
+                              className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm font-mono focus:border-indigo-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Quick Presets for Curaçao */}
+                        <div className="pt-2 border-t border-slate-800">
+                          <span className="text-[11px] text-slate-400 font-semibold block mb-2">
+                            Quick One-Click Curaçao District Coordinates:
+                          </span>
+                          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                            {CURACAO_GPS_PRESETS.map((preset, idx) => (
+                              <button
+                                key={idx}
+                                type="button"
+                                onClick={() => handleApplyCoordinatePreset(preset)}
+                                className="px-2.5 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-left transition"
+                              >
+                                <p className="text-xs font-semibold text-slate-200 truncate">{preset.name}</p>
+                                <p className="text-[10px] text-slate-500 font-mono mt-0.5">{preset.lat}, {preset.lng}</p>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 3: OPERATING HOURS & WEEKLY SCHEDULE */}
+                  {isMerchant && editUserTab === 'schedule' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">General Display Hours</label>
+                          <input
+                            type="text"
+                            value={editStoreOpenHours}
+                            onChange={(e) => setEditStoreOpenHours(e.target.value)}
+                            placeholder="e.g. 7:00 AM - 7:00 PM (Mon-Sat)"
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div className="flex items-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleApplyScheduleToAllWeekdays('08:00', '18:00')}
+                            className="w-full py-2 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium border border-slate-700 transition"
+                          >
+                            Set Standard 8 AM - 6 PM (Mon-Sat)
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Full Weekly Day-by-Day Matrix */}
+                      <div className="p-3.5 rounded-xl bg-slate-950/60 border border-slate-800 space-y-2">
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider mb-2">
+                          Weekly Day-by-Day Operating Matrix
+                        </h4>
+
+                        <div className="space-y-2">
+                          {SCHEDULE_DAYS.map((day) => {
+                            const dayConfig = editStoreSchedule[day] || { isOpen: true, openTime: '08:00', closeTime: '18:00' };
+
+                            return (
+                              <div
+                                key={day}
+                                className="flex items-center justify-between p-2.5 rounded-lg bg-slate-900 border border-slate-800/80 gap-3"
+                              >
+                                <div className="w-28 flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    id={`schedule-${day}-open`}
+                                    checked={dayConfig.isOpen}
+                                    onChange={(e) => handleScheduleDayChange(day, 'isOpen', e.target.checked)}
+                                    className="rounded border-slate-700 bg-slate-800 text-indigo-600 focus:ring-indigo-500 w-4 h-4 cursor-pointer"
+                                  />
+                                  <label htmlFor={`schedule-${day}-open`} className="text-xs font-semibold text-slate-200 capitalize cursor-pointer">
+                                    {SCHEDULE_DAY_LABELS[day].en}
+                                  </label>
+                                </div>
+
+                                {dayConfig.isOpen ? (
+                                  <div className="flex items-center gap-2 text-xs">
+                                    <span className="text-slate-500 text-[11px]">Opens:</span>
+                                    <input
+                                      type="time"
+                                      value={dayConfig.openTime}
+                                      onChange={(e) => handleScheduleDayChange(day, 'openTime', e.target.value)}
+                                      className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-white font-mono focus:border-indigo-500 focus:outline-none"
+                                    />
+                                    <span className="text-slate-500 text-[11px]">Closes:</span>
+                                    <input
+                                      type="time"
+                                      value={dayConfig.closeTime}
+                                      onChange={(e) => handleScheduleDayChange(day, 'closeTime', e.target.value)}
+                                      className="px-2 py-1 rounded bg-slate-800 border border-slate-700 text-white font-mono focus:border-indigo-500 focus:outline-none"
+                                    />
+                                  </div>
+                                ) : (
+                                  <span className="text-xs text-rose-400 font-semibold px-2 py-1 rounded bg-rose-500/10 border border-rose-500/20">
+                                    Closed
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 4: CONTACTS, MANAGER & SOCIAL */}
+                  {isMerchant && editUserTab === 'contact' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Primary Phone</label>
+                          <input
+                            type="text"
+                            value={editStorePhone}
+                            onChange={(e) => setEditStorePhone(e.target.value)}
+                            placeholder="+599 9 461-2345"
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Secondary / WhatsApp Phone</label>
+                          <input
+                            type="text"
+                            value={editStoreSecondaryPhone}
+                            onChange={(e) => setEditStoreSecondaryPhone(e.target.value)}
+                            placeholder="+599 9 512-3456"
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Business Store Email</label>
+                          <input
+                            type="email"
+                            value={editStoreEmail}
+                            onChange={(e) => setEditStoreEmail(e.target.value)}
+                            placeholder="store@domain.cw"
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Store Website URL</label>
+                          <input
+                            type="url"
+                            value={editStoreWebsite}
+                            onChange={(e) => setEditStoreWebsite(e.target.value)}
+                            placeholder="https://mybusiness.cw"
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Store Manager Full Name</label>
+                          <input
+                            type="text"
+                            value={editStoreManagerName}
+                            onChange={(e) => setEditStoreManagerName(e.target.value)}
+                            placeholder="e.g. Elena Gomez"
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Instagram / Social Handle</label>
+                          <input
+                            type="text"
+                            value={editStoreSocialHandle}
+                            onChange={(e) => setEditStoreSocialHandle(e.target.value)}
+                            placeholder="@pundacoffee"
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 5: LOYALTY RATE & PERKS */}
+                  {isMerchant && editUserTab === 'loyalty' && (
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Points Earning Rate per $1 USD Spent</label>
+                        <div className="flex items-center gap-3">
+                          <input
+                            type="number"
+                            min="1"
+                            max="100"
+                            value={editStorePointsRate}
+                            onChange={(e) => setEditStorePointsRate(parseInt(e.target.value, 10) || 10)}
+                            className="w-36 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm font-bold focus:border-indigo-500 focus:outline-none"
+                          />
+                          <span className="text-xs text-slate-400">
+                            Customers earn <strong>{editStorePointsRate} points</strong> for every $1 spent at this store POS terminal.
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Store Loyalty Perks Manager */}
+                      <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider">
+                          Active Store Perks & Member Exclusives
+                        </h4>
+
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={editNewPerkInput}
+                            onChange={(e) => setEditNewPerkInput(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                e.preventDefault();
+                                handleAddPerk();
+                              }
+                            }}
+                            placeholder="e.g. Free Wi-Fi with Harbor View, 10% Off Pastry..."
+                            className="flex-1 px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-xs focus:border-indigo-500 focus:outline-none"
+                          />
+                          <button
+                            type="button"
+                            onClick={handleAddPerk}
+                            className="px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold transition flex items-center gap-1 shrink-0"
+                          >
+                            <Plus className="w-3.5 h-3.5" />
+                            <span>Add Perk</span>
+                          </button>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2 pt-2">
+                          {editStorePerks.map((perk, index) => (
+                            <div
+                              key={index}
+                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 border border-slate-700 text-slate-200 text-xs shadow-sm"
+                            >
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                              <span>{perk}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemovePerk(index)}
+                                className="ml-1 text-slate-500 hover:text-rose-400 transition"
+                                title="Remove perk"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+
+                          {editStorePerks.length === 0 && (
+                            <p className="text-xs text-slate-500 italic">No perks configured yet. Add perks to display them in the customer store profile.</p>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* TAB 6: ACCOUNT & POS SECURITY (FOR BOTH MERCHANTS & USERS) */}
+                  {editUserTab === 'account' && (
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Username (Firebase Document ID)</label>
+                          <input
+                            type="text"
+                            disabled
+                            value={selectedUserForEdit.username}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-950 border border-slate-800 text-slate-400 text-sm font-mono cursor-not-allowed"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Full Legal Name *</label>
+                          <input
+                            type="text"
+                            required
+                            value={selectedUserForEdit.fullName}
+                            onChange={(e) => setSelectedUserForEdit({ ...selectedUserForEdit, fullName: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Email Address</label>
+                          <input
+                            type="email"
+                            value={selectedUserForEdit.email}
+                            onChange={(e) => setSelectedUserForEdit({ ...selectedUserForEdit, email: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Account Role</label>
+                          <select
+                            value={selectedUserForEdit.role}
+                            onChange={(e: any) => setSelectedUserForEdit({ ...selectedUserForEdit, role: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          >
+                            <option value="user">Customer / Pass Holder</option>
+                            <option value="merchant">Merchant POS Operator</option>
+                            <option value="admin">Administrator</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Loyalty Tier</label>
+                          <select
+                            value={selectedUserForEdit.currentTier}
+                            onChange={(e: any) => setSelectedUserForEdit({ ...selectedUserForEdit, currentTier: e.target.value })}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          >
+                            <option value="Bronze">Bronze Tier</option>
+                            <option value="Silver">Silver Tier</option>
+                            <option value="Gold">Gold Tier</option>
+                            <option value="Platinum">Platinum Tier</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-semibold text-slate-300 uppercase mb-1">Points Balance</label>
+                          <input
+                            type="number"
+                            value={selectedUserForEdit.pointsBalance ?? 0}
+                            onChange={(e) => setSelectedUserForEdit({ ...selectedUserForEdit, pointsBalance: parseInt(e.target.value, 10) || 0 })}
+                            className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none"
+                          />
+                        </div>
+                      </div>
+
+                      {/* Security Credentials */}
+                      <div className="p-4 rounded-xl bg-slate-950/60 border border-slate-800 space-y-3">
+                        <h4 className="text-xs font-bold text-white uppercase tracking-wider flex items-center gap-1.5">
+                          <Lock className="w-3.5 h-3.5 text-indigo-400" />
+                          <span>Security Credentials & Passcode</span>
+                        </h4>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">5-digit Security PIN</label>
+                            <div className="relative">
+                              <input
+                                type={editShowPin ? 'text' : 'password'}
+                                maxLength={5}
+                                value={selectedUserForEdit.pinCode || ''}
+                                onChange={(e) => setSelectedUserForEdit({ ...selectedUserForEdit, pinCode: e.target.value })}
+                                placeholder="12345"
+                                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm font-mono tracking-widest focus:border-indigo-500 focus:outline-none pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setEditShowPin(!editShowPin)}
+                                className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
+                              >
+                                {editShowPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="block text-[11px] font-semibold text-slate-400 uppercase mb-1">Change Account Password</label>
+                            <div className="relative">
+                              <input
+                                type={editShowPassword ? 'text' : 'password'}
+                                value={editPassword}
+                                onChange={(e) => setEditPassword(e.target.value)}
+                                placeholder="Leave unchanged or enter new password"
+                                className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:border-indigo-500 focus:outline-none pr-10"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setEditShowPassword(!editShowPassword)}
+                                className="absolute right-3 top-2.5 text-slate-400 hover:text-white"
+                              >
+                                {editShowPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Modal Action Buttons */}
+                  <div className="flex items-center justify-between gap-3 pt-3 border-t border-slate-800 shrink-0">
+                    <div className="text-xs text-slate-400">
+                      {isMerchant ? (
+                        <span>Will save both user account and full partner store profile to Firestore.</span>
+                      ) : (
+                        <span>Will update user account in Firestore database.</span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={() => setSelectedUserForEdit(null)}
+                        className="px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="submit"
+                        disabled={isSubmittingUser}
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-lg shadow-indigo-600/25 transition"
+                      >
+                        <Save className="w-4 h-4" />
+                        <span>{isSubmittingUser ? 'Saving & Syncing...' : isMerchant ? 'Save Merchant & Store Profile' : 'Save Changes'}</span>
+                      </button>
+                    </div>
+                  </div>
+                </form>
+              </motion.div>
+            </div>
+          );
+        })()}
       </AnimatePresence>
 
       {/* ============================================================ */}
