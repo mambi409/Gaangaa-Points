@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import L from 'leaflet';
 import {
   MapPin,
@@ -25,7 +25,8 @@ import {
   ExternalLink,
   ShieldCheck,
   Zap,
-  Info
+  Info,
+  Tag
 } from 'lucide-react';
 import { Store, NavigationRoute } from '../../types';
 import { useLanguage } from '../../context/LanguageContext';
@@ -51,17 +52,6 @@ const CATEGORY_META: Record<string, { bg: string; text: string; icon: string; pi
   Bakery: { bg: 'bg-rose-100 dark:bg-rose-950', text: 'text-rose-700 dark:text-rose-300', icon: '🥐', pinBg: '#e11d48' }
 };
 
-// Curacao Landmark Districts with preset coordinates
-const CURACAO_DISTRICTS = [
-  { id: 'all', labelKey: 'map.district_all', lat: 12.1696, lng: -68.9900, zoom: 11 },
-  { id: 'punda', labelKey: 'map.district_willemstad', lat: 12.1054, lng: -68.9332, zoom: 16 },
-  { id: 'otrobanda', labelKey: 'map.district_otrobanda', lat: 12.1082, lng: -68.9370, zoom: 16 },
-  { id: 'pietermaai', labelKey: 'map.district_pietermaai', lat: 12.1028, lng: -68.9285, zoom: 16 },
-  { id: 'mambo', labelKey: 'map.district_mambo', lat: 12.0885, lng: -68.8982, zoom: 15 },
-  { id: 'janthiel', labelKey: 'map.district_janthiel', lat: 12.0782, lng: -68.8788, zoom: 15 },
-  { id: 'salina', labelKey: 'map.district_salina', lat: 12.1150, lng: -68.9050, zoom: 14 }
-];
-
 export const InteractiveMap: React.FC<InteractiveMapProps> = ({
   stores,
   selectedStore,
@@ -81,13 +71,44 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
   const [mapStyle, setMapStyle] = useState<'standard' | 'dark' | 'satellite'>('standard');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [activeDistrict, setActiveDistrict] = useState<string>('all');
+
+  // Derive unique categories dynamically from stores
+  const categoriesList = useMemo(() => {
+    const defaultOrder = ['Coffee', 'Fashion', 'Grocery', 'Electronics', 'Dining', 'Wellness', 'Bakery'];
+    const uniqueFromStores: string[] = Array.from(new Set(stores.map((s) => s.category).filter(Boolean)));
+    const sorted = [
+      ...defaultOrder.filter((c) => uniqueFromStores.includes(c)),
+      ...uniqueFromStores.filter((c) => !defaultOrder.includes(c))
+    ];
+    return sorted;
+  }, [stores]);
 
   // Filter stores by category
-  const filteredStores = stores.filter((s) => {
-    if (selectedCategory === 'all') return true;
-    return s.category.toLowerCase() === selectedCategory.toLowerCase();
-  });
+  const filteredStores = useMemo(() => {
+    if (selectedCategory === 'all') return stores;
+    return stores.filter((s) => s.category.toLowerCase() === selectedCategory.toLowerCase());
+  }, [stores, selectedCategory]);
+
+  const getCategoryLabel = (category: string) => {
+    switch (category.toLowerCase()) {
+      case 'all':
+        return t('map.cat_all');
+      case 'coffee':
+        return t('stores.cat_coffee');
+      case 'fashion':
+        return t('stores.cat_fashion');
+      case 'grocery':
+        return t('stores.cat_grocery');
+      case 'electronics':
+        return t('stores.cat_electronics');
+      case 'dining':
+        return t('stores.cat_dining');
+      case 'wellness':
+        return t('stores.cat_wellness');
+      default:
+        return category;
+    }
+  };
 
   // Tile layer URL map
   const getTileUrl = (style: 'standard' | 'dark' | 'satellite') => {
@@ -194,7 +215,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
 
     userMarkerRef.current = userMarker;
 
-    // 2. Create and Add Store Pins
+    // 2. Create and Add Store Pins for the filtered category
     filteredStores.forEach((store) => {
       const isSelected = selectedStore?.id === store.id;
       const meta = CATEGORY_META[store.category] || { icon: '📍', pinBg: '#3b82f6' };
@@ -243,7 +264,7 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
         iconAnchor: [18, 42]
       });
 
-      const marker = L.marker([store.lat, store.lng], { icon: storeIcon })
+      L.marker([store.lat, store.lng], { icon: storeIcon })
         .addTo(markersLayerRef.current!)
         .on('click', () => {
           onSelectStore(store);
@@ -318,11 +339,18 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
     });
   };
 
-  const handleSelectDistrict = (district: typeof CURACAO_DISTRICTS[0]) => {
-    setActiveDistrict(district.id);
-    if (mapInstanceRef.current) {
-      mapInstanceRef.current.flyTo([district.lat, district.lng], district.zoom, {
-        duration: 1.2
+  // Category select handler with automatic bounding box adjustment
+  const handleSelectCategory = (categoryKey: string) => {
+    setSelectedCategory(categoryKey);
+    const matched = categoryKey === 'all'
+      ? stores
+      : stores.filter((s) => s.category.toLowerCase() === categoryKey.toLowerCase());
+
+    if (mapInstanceRef.current && matched.length > 0) {
+      const group = new L.FeatureGroup(matched.map((s) => L.marker([s.lat, s.lng])));
+      mapInstanceRef.current.fitBounds(group.getBounds(), {
+        padding: [60, 60],
+        maxZoom: matched.length === 1 ? 16 : 14
       });
     }
   };
@@ -342,11 +370,13 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
                   {t('map.curacao_network')}
                 </span>
                 <span className="bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-extrabold px-2 py-0.5 rounded-full text-[10px] border border-blue-200 dark:border-blue-800">
-                  🇨🇼 Curaçao ({filteredStores.length})
+                  {filteredStores.length} {filteredStores.length === 1 ? 'Store' : 'Stores'}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                {language === 'es' ? 'Willemstad, Pietermaai, Mambo Beach, Jan Thiel & Saliña' : 'Willemstad, Pietermaai, Mambo Beach, Jan Thiel & Saliña'}
+                {selectedCategory === 'all'
+                  ? (language === 'es' ? 'Mostrando todas las tiendas asociadas en Curaçao' : 'Showing all partner merchants across Curaçao')
+                  : `${language === 'es' ? 'Categoría activa:' : 'Filtered category:'} ${getCategoryLabel(selectedCategory)} (${filteredStores.length})`}
               </p>
             </div>
           </div>
@@ -422,25 +452,65 @@ export const InteractiveMap: React.FC<InteractiveMapProps> = ({
           </div>
         </div>
 
-        {/* District Quick Zoom Selector */}
+        {/* Store Category Filter Bar (Replaced District) */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs no-scrollbar">
           <span className="text-slate-500 font-bold text-[11px] shrink-0 mr-1 flex items-center gap-1">
-            <MapPin className="w-3 h-3 text-red-500" />
-            {t('map.filter_district')}
+            <Tag className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+            {t('map.filter_category')}
           </span>
-          {CURACAO_DISTRICTS.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => handleSelectDistrict(d)}
-              className={`px-3 py-1.5 rounded-xl font-bold text-[11px] whitespace-nowrap transition cursor-pointer border ${
-                activeDistrict === d.id
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
-                  : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+
+          {/* All Categories Button */}
+          <button
+            onClick={() => handleSelectCategory('all')}
+            className={`px-3 py-1.5 rounded-xl font-bold text-[11px] whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 border ${
+              selectedCategory === 'all'
+                ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+            }`}
+          >
+            <span>🏷️</span>
+            <span>{t('map.cat_all')}</span>
+            <span
+              className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                selectedCategory === 'all'
+                  ? 'bg-white/20 text-white'
+                  : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
               }`}
             >
-              {t(d.labelKey as any)}
-            </button>
-          ))}
+              {stores.length}
+            </span>
+          </button>
+
+          {/* Individual Category Buttons */}
+          {categoriesList.map((cat) => {
+            const count = stores.filter((s) => s.category.toLowerCase() === cat.toLowerCase()).length;
+            const meta = CATEGORY_META[cat] || { icon: '📍' };
+            const isSelected = selectedCategory.toLowerCase() === cat.toLowerCase();
+
+            return (
+              <button
+                key={cat}
+                onClick={() => handleSelectCategory(cat)}
+                className={`px-3 py-1.5 rounded-xl font-bold text-[11px] whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 border ${
+                  isSelected
+                    ? 'bg-blue-600 text-white border-blue-600 shadow-xs'
+                    : 'bg-slate-50 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <span>{meta.icon}</span>
+                <span>{getCategoryLabel(cat)}</span>
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                    isSelected
+                      ? 'bg-white/20 text-white'
+                      : 'bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300'
+                  }`}
+                >
+                  {count}
+                </span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

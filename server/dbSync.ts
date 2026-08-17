@@ -241,6 +241,38 @@ export async function initFirestoreSync() {
       console.log('[Firestore] 0 registered users found in Firestore users collection.');
     }
 
+    // Ensure Admin User 'mambiadmin' is always created and updated in Firestore
+    const adminUser: RegisteredUser = {
+      username: 'mambiadmin',
+      password: '409H!llarY409',
+      fullName: 'Mambi Administrator',
+      email: 'mambiadmin@omniloyalty.cw',
+      passId: 'PASS-ADMIN-001-CW',
+      pinCode: '40940',
+      role: 'admin',
+      pointsBalance: 50000,
+      lifetimePoints: 100000,
+      currentTier: 'Platinum',
+      status: 'active',
+      emailVerified: true,
+      createdAt: '2026-01-01T00:00:00.000Z'
+    };
+
+    const adminIdx = usersDB.findIndex((u) => u.username.toLowerCase() === 'mambiadmin');
+    if (adminIdx >= 0) {
+      usersDB[adminIdx] = { ...usersDB[adminIdx], ...adminUser };
+    } else {
+      usersDB.unshift(adminUser);
+    }
+
+    try {
+      await setDoc(doc(db, 'users', 'mambiadmin'), adminUser, { merge: true });
+      await setDoc(doc(db, 'users', 'mambiadmin@omniloyalty.cw'), adminUser, { merge: true });
+      console.log('[Firestore] ✅ Admin user "mambiadmin" successfully verified and saved to Firestore users collection.');
+    } catch (adminFsErr) {
+      console.error('[Firestore] Error saving mambiadmin to Firestore:', adminFsErr);
+    }
+
     // 2. Sync Wallet
     const walletDocRef = doc(db, 'wallets', 'default');
     const walletSnap = await getDoc(walletDocRef);

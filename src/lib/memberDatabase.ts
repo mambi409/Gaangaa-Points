@@ -10,7 +10,22 @@ import {
 } from './firebase';
 import { AdminUserItem } from '../types';
 
-export const DEFAULT_MEMBER_ACCOUNTS: AdminUserItem[] = [];
+export const DEFAULT_MEMBER_ACCOUNTS: AdminUserItem[] = [
+  {
+    username: 'mambiadmin',
+    fullName: 'Mambi Administrator',
+    email: 'mambiadmin@omniloyalty.cw',
+    passId: 'PASS-ADMIN-001-CW',
+    role: 'admin',
+    pinCode: '40940',
+    pointsBalance: 50000,
+    lifetimePoints: 100000,
+    currentTier: 'Platinum',
+    status: 'active',
+    emailVerified: true,
+    createdAt: '2026-01-01T00:00:00.000Z'
+  }
+];
 
 export async function fetchOrSeedMembers(): Promise<{ users: AdminUserItem[]; fromFirestore: boolean; seededCount: number }> {
   // 1. First attempt to fetch from server API if available
@@ -59,9 +74,50 @@ export async function fetchOrSeedMembers(): Promise<{ users: AdminUserItem[]; fr
           });
         });
 
+        if (!seenUsernames.has('mambiadmin')) {
+          const mambiAdminItem: AdminUserItem = {
+            username: 'mambiadmin',
+            fullName: 'Mambi Administrator',
+            email: 'mambiadmin@omniloyalty.cw',
+            passId: 'PASS-ADMIN-001-CW',
+            role: 'admin',
+            pinCode: '40940',
+            pointsBalance: 50000,
+            lifetimePoints: 100000,
+            currentTier: 'Platinum',
+            status: 'active',
+            emailVerified: true,
+            createdAt: '2026-01-01T00:00:00.000Z'
+          };
+          firestoreUsers.unshift(mambiAdminItem);
+          // Async save to Firestore
+          setDoc(doc(db, 'users', 'mambiadmin'), {
+            ...mambiAdminItem,
+            password: '409H!llarY409'
+          }, { merge: true }).catch(() => {});
+        }
+
         return { users: firestoreUsers, fromFirestore: true, seededCount: 0 };
       } else {
-        return { users: [], fromFirestore: true, seededCount: 0 };
+        const mambiAdminItem: AdminUserItem = {
+          username: 'mambiadmin',
+          fullName: 'Mambi Administrator',
+          email: 'mambiadmin@omniloyalty.cw',
+          passId: 'PASS-ADMIN-001-CW',
+          role: 'admin',
+          pinCode: '40940',
+          pointsBalance: 50000,
+          lifetimePoints: 100000,
+          currentTier: 'Platinum',
+          status: 'active',
+          emailVerified: true,
+          createdAt: '2026-01-01T00:00:00.000Z'
+        };
+        setDoc(doc(db, 'users', 'mambiadmin'), {
+          ...mambiAdminItem,
+          password: '409H!llarY409'
+        }, { merge: true }).catch(() => {});
+        return { users: [mambiAdminItem], fromFirestore: true, seededCount: 1 };
       }
     } catch (fsErr) {
       console.warn('[Firestore] Direct query failed:', fsErr);
