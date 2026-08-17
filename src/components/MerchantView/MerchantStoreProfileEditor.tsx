@@ -23,7 +23,12 @@ import {
   Layers,
   Compass,
   Crosshair,
-  ExternalLink
+  ExternalLink,
+  Upload,
+  Image as ImageIcon,
+  Camera,
+  X,
+  Check
 } from 'lucide-react';
 import { saveStoreToDatabase, DEFAULT_WEEKLY_SCHEDULE } from '../../lib/storeDatabase';
 import { useLanguage } from '../../context/LanguageContext';
@@ -86,6 +91,7 @@ export const MerchantStoreProfileEditor: React.FC<MerchantStoreProfileEditorProp
   // Form State
   const [name, setName] = useState(store.name || '');
   const [category, setCategory] = useState<string>(store.category || 'Coffee');
+  const [logo, setLogo] = useState(store.logo || '');
   const [description, setDescription] = useState(store.description || '');
   const [address, setAddress] = useState(store.address || '');
   const [city, setCity] = useState(store.city || 'San Francisco');
@@ -105,6 +111,16 @@ export const MerchantStoreProfileEditor: React.FC<MerchantStoreProfileEditorProp
   const [newPerkInput, setNewPerkInput] = useState('');
   const [imageUrl, setImageUrl] = useState(store.image || '');
 
+  // Logo Upload State
+  const [isDraggingLogo, setIsDraggingLogo] = useState(false);
+  const [logoInputMode, setLogoInputMode] = useState<'upload' | 'url'>('upload');
+  const logoFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Header Image Upload State
+  const [isDraggingHeader, setIsDraggingHeader] = useState(false);
+  const [headerInputMode, setHeaderInputMode] = useState<'upload' | 'url' | 'presets'>('upload');
+  const headerFileInputRef = useRef<HTMLInputElement>(null);
+
   // Weekly Schedule Matrix
   const [schedule, setSchedule] = useState<StoreWeeklySchedule>(() => {
     return store.schedule || DEFAULT_WEEKLY_SCHEDULE;
@@ -118,6 +134,7 @@ export const MerchantStoreProfileEditor: React.FC<MerchantStoreProfileEditorProp
   useEffect(() => {
     setName(store.name || '');
     setCategory(store.category || 'Coffee');
+    setLogo(store.logo || '');
     setDescription(store.description || '');
     setAddress(store.address || '');
     setCity(store.city || 'San Francisco');
@@ -135,6 +152,174 @@ export const MerchantStoreProfileEditor: React.FC<MerchantStoreProfileEditorProp
     setImageUrl(store.image || '');
     setSchedule(store.schedule || DEFAULT_WEEKLY_SCHEDULE);
   }, [store.id]);
+
+  // Handle Logo File Upload (supports Drag & Drop and Manual Selection)
+  const processLogoFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast(
+        language === 'es'
+          ? 'Por favor sube un archivo de imagen válido (PNG, JPG, SVG, WebP)'
+          : 'Please upload a valid image file (PNG, JPG, SVG, WebP)',
+        'error'
+      );
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      showToast(
+        language === 'es'
+          ? 'La imagen del logo no debe superar los 5MB'
+          : 'Store logo file size must not exceed 5MB',
+        'error'
+      );
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        setLogo(dataUrl);
+        showToast(
+          language === 'es'
+            ? '¡Logo del comercio cargado exitosamente!'
+            : 'Store logo uploaded successfully! Click "Save & Sync Changes" to persist.',
+          'success'
+        );
+      }
+    };
+    reader.onerror = () => {
+      showToast(
+        language === 'es' ? 'Error al leer el archivo de logo' : 'Failed to read the logo file',
+        'error'
+      );
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleLogoFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processLogoFile(file);
+    }
+  };
+
+  const handleLogoDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingLogo(true);
+  };
+
+  const handleLogoDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingLogo(false);
+  };
+
+  const handleLogoDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingLogo(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processLogoFile(file);
+    }
+  };
+
+  const handleRemoveLogo = () => {
+    setLogo('');
+    if (logoFileInputRef.current) {
+      logoFileInputRef.current.value = '';
+    }
+    showToast(
+      language === 'es' ? 'Logo del comercio removido' : 'Store logo removed',
+      'info'
+    );
+  };
+
+  // Handle Header Image File Upload (supports Drag & Drop and Manual Selection)
+  const processHeaderFile = (file: File) => {
+    if (!file.type.startsWith('image/')) {
+      showToast(
+        language === 'es'
+          ? 'Por favor sube un archivo de imagen válido (PNG, JPG, WebP)'
+          : 'Please upload a valid image file (PNG, JPG, WebP)',
+        'error'
+      );
+      return;
+    }
+
+    if (file.size > 8 * 1024 * 1024) {
+      showToast(
+        language === 'es'
+          ? 'La imagen de portada no debe superar los 8MB'
+          : 'Header image file size must not exceed 8MB',
+        'error'
+      );
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        setImageUrl(dataUrl);
+        showToast(
+          language === 'es'
+            ? '¡Imagen de portada cargada exitosamente!'
+            : 'Header cover image uploaded successfully! Click "Save & Sync Changes" to persist.',
+          'success'
+        );
+      }
+    };
+    reader.onerror = () => {
+      showToast(
+        language === 'es' ? 'Error al leer la imagen de portada' : 'Failed to read the header image file',
+        'error'
+      );
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleHeaderFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processHeaderFile(file);
+    }
+  };
+
+  const handleHeaderDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingHeader(true);
+  };
+
+  const handleHeaderDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingHeader(false);
+  };
+
+  const handleHeaderDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingHeader(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processHeaderFile(file);
+    }
+  };
+
+  const handleRemoveHeaderImage = () => {
+    setImageUrl('');
+    if (headerFileInputRef.current) {
+      headerFileInputRef.current.value = '';
+    }
+    showToast(
+      language === 'es' ? 'Imagen de portada removida' : 'Header cover image removed',
+      'info'
+    );
+  };
 
   // Handle GPS Auto-detect
   const handleDetectLocation = () => {
@@ -233,13 +418,14 @@ export const MerchantStoreProfileEditor: React.FC<MerchantStoreProfileEditorProp
       pointsRate: Number(pointsRate) || 10,
       perks,
       image: imageUrl.trim() || store.image,
+      logo: logo.trim() || undefined,
       schedule
     };
 
     try {
       const result = await saveStoreToDatabase(updatedStore);
       onStoreUpdated(result.store);
-      showToast('Store profile & map settings successfully saved and synced to database!', 'success');
+      showToast('Store profile, logo & map settings successfully saved and synced to database!', 'success');
     } catch (err) {
       console.error('Error saving store profile:', err);
       showToast('Failed to save store profile', 'error');
@@ -252,10 +438,18 @@ export const MerchantStoreProfileEditor: React.FC<MerchantStoreProfileEditorProp
     <div className="space-y-6">
       {/* Header Banner & Save Action */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center font-bold text-xl shadow-xs">
-            <Building className="w-6 h-6" />
-          </div>
+        <div className="flex items-center gap-3.5">
+          {logo || store.logo ? (
+            <img
+              src={logo || store.logo}
+              alt={name || store.name}
+              className="w-14 h-14 rounded-2xl object-cover border-2 border-blue-200 bg-white p-0.5 shadow-xs shrink-0"
+            />
+          ) : (
+            <div className="w-14 h-14 rounded-2xl bg-blue-50 text-blue-600 border border-blue-200 flex items-center justify-center font-bold text-xl shadow-xs shrink-0">
+              <Building className="w-7 h-7" />
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-blue-700">
@@ -363,9 +557,450 @@ export const MerchantStoreProfileEditor: React.FC<MerchantStoreProfileEditorProp
               </h3>
               <p className="text-xs text-slate-500 mt-1">
                 {language === 'es'
-                  ? 'Configura el nombre público de la tienda, categoría comercial e imagen de portada.'
-                  : 'Configure public store branding, retail category, and catalog description shown to loyalty members.'}
+                  ? 'Configura el logo oficial, nombre comercial público, categoría e imagen de portada.'
+                  : 'Configure official store logo, public business name, retail category, and branding.'}
               </p>
+            </div>
+
+            {/* STORE LOGO UPLOAD & BRANDING SECTION */}
+            <div className="bg-slate-50/75 rounded-2xl p-5 border border-slate-200/80 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <ImageIcon className="w-4 h-4 text-blue-600" />
+                      {language === 'es' ? 'Logo Oficial del Comercio' : 'Official Store Logo'}
+                    </span>
+                    {logo && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        {language === 'es' ? 'Logo Activo' : 'Active Logo'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {language === 'es'
+                      ? 'Sube el logo de tu marca para mostrarlo en el directorio, mapa y terminal POS.'
+                      : 'Upload your business brand icon shown across store directory, map cards, and customer passes.'}
+                  </p>
+                </div>
+
+                {/* Toggle Upload Mode vs Direct URL Mode */}
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setLogoInputMode('upload')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      logoInputMode === 'upload'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Upload className="w-3 h-3 inline mr-1" />
+                    {language === 'es' ? 'Subir Archivo' : 'Upload File'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLogoInputMode('url')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      logoInputMode === 'url'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Globe className="w-3 h-3 inline mr-1" />
+                    {language === 'es' ? 'Enlace URL' : 'Direct URL'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Hidden File Input for Logo */}
+              <input
+                type="file"
+                ref={logoFileInputRef}
+                onChange={handleLogoFileChange}
+                accept="image/png,image/jpeg,image/jpg,image/webp,image/svg+xml"
+                className="hidden"
+                id="merchant-logo-file-input"
+              />
+
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-5 items-center">
+                {/* Logo Live Preview Badge */}
+                <div className="md:col-span-4 flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-slate-200 shadow-2xs">
+                  <div className="relative group">
+                    {logo ? (
+                      <div className="w-24 h-24 rounded-2xl overflow-hidden border-2 border-blue-500/30 bg-radial from-slate-100 to-slate-200 flex items-center justify-center p-1 shadow-xs">
+                        <img
+                          src={logo}
+                          alt="Store Logo Preview"
+                          className="w-full h-full object-contain rounded-xl"
+                        />
+                      </div>
+                    ) : (
+                      <div className="w-24 h-24 rounded-2xl border-2 border-dashed border-slate-300 bg-slate-100/60 flex flex-col items-center justify-center text-slate-400">
+                        <Camera className="w-8 h-8 stroke-1.5" />
+                        <span className="text-[10px] font-semibold mt-1">No Logo</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <span className="text-[11px] font-bold text-slate-700 mt-2 text-center">
+                    {logo ? (name || 'Store Brand') : (language === 'es' ? 'Sin Logo Asignado' : 'No Logo Configured')}
+                  </span>
+
+                  {logo && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        type="button"
+                        onClick={() => logoFileInputRef.current?.click()}
+                        className="px-2.5 py-1 text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
+                      >
+                        {language === 'es' ? 'Cambiar' : 'Replace'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoveLogo}
+                        className="px-2.5 py-1 text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition cursor-pointer"
+                      >
+                        <Trash2 className="w-3 h-3 inline mr-1" />
+                        {language === 'es' ? 'Eliminar' : 'Remove'}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Upload Action / URL input Area */}
+                <div className="md:col-span-8">
+                  {logoInputMode === 'upload' ? (
+                    <div
+                      onDragOver={handleLogoDragOver}
+                      onDragLeave={handleLogoDragLeave}
+                      onDrop={handleLogoDrop}
+                      onClick={() => logoFileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-xl p-5 text-center cursor-pointer transition flex flex-col items-center justify-center gap-2 ${
+                        isDraggingLogo
+                          ? 'border-blue-500 bg-blue-50/70 scale-[1.01]'
+                          : 'border-slate-300 hover:border-blue-400 bg-white hover:bg-slate-50/50'
+                      }`}
+                    >
+                      <div className="w-10 h-10 rounded-full bg-blue-50 text-blue-600 flex items-center justify-center">
+                        <Upload className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">
+                          {language === 'es'
+                            ? 'Arrastra y suelta tu logo aquí, o haz clic para explorar'
+                            : 'Drag and drop your store logo here, or click to browse'}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {language === 'es'
+                            ? 'Formatos recomendados: PNG con fondo transparente, SVG, JPG o WebP (Máx 5MB, formato cuadrado 500x500px)'
+                            : 'Recommended: PNG with transparent background, SVG, JPG, or WebP (Max 5MB, square 500x500px)'}
+                        </p>
+                      </div>
+                      <span className="px-3 py-1 bg-blue-50 text-blue-700 text-xs font-bold rounded-lg border border-blue-200">
+                        {language === 'es' ? 'Seleccionar Archivo de Imagen' : 'Browse Local Image File'}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+                      <label className="text-xs font-bold text-slate-700 block">
+                        {language === 'es' ? 'Enlace Directo a Imagen del Logo (URL)' : 'Direct Logo Image URL'}
+                      </label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="url"
+                          value={logo}
+                          onChange={(e) => setLogo(e.target.value)}
+                          placeholder="https://example.com/logo.png"
+                          className="flex-1 px-3.5 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
+                        />
+                        {logo && (
+                          <button
+                            type="button"
+                            onClick={() => setLogo('')}
+                            className="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                            title="Clear URL"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        {language === 'es'
+                          ? 'Ingresa la URL pública de la imagen de tu logotipo corporativo.'
+                          : 'Paste a publicly accessible direct image URL (HTTPS recommended).'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* STORE HEADER / COVER IMAGE UPLOAD SECTION */}
+            <div className="bg-slate-50/75 rounded-2xl p-5 border border-slate-200/80 space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Camera className="w-4 h-4 text-blue-600" />
+                      {language === 'es' ? 'Imagen de Portada / Encabezado de Tarjeta' : 'Store Card Header Image & Banner'}
+                    </span>
+                    {imageUrl && (
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
+                        <Check className="w-3 h-3 text-emerald-600" />
+                        {language === 'es' ? 'Encabezado Activo' : 'Active Header'}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {language === 'es'
+                      ? 'Sube una imagen de cabecera panorámica (16:9) que se mostrará en las tarjetas del directorio y el mapa.'
+                      : 'Upload a wide banner photo (16:9) displayed at the top of your store card in directory & maps.'}
+                  </p>
+                </div>
+
+                {/* Mode Selector */}
+                <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 self-start sm:self-auto">
+                  <button
+                    type="button"
+                    onClick={() => setHeaderInputMode('upload')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      headerInputMode === 'upload'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Upload className="w-3 h-3 inline mr-1" />
+                    {language === 'es' ? 'Subir Foto' : 'Upload Photo'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHeaderInputMode('presets')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      headerInputMode === 'presets'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Sparkles className="w-3 h-3 inline mr-1" />
+                    {language === 'es' ? 'Galería' : 'Presets'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setHeaderInputMode('url')}
+                    className={`px-3 py-1 text-xs font-bold rounded-lg transition cursor-pointer ${
+                      headerInputMode === 'url'
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <Globe className="w-3 h-3 inline mr-1" />
+                    {language === 'es' ? 'URL' : 'Direct URL'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Hidden File Input for Header Cover */}
+              <input
+                type="file"
+                ref={headerFileInputRef}
+                onChange={handleHeaderFileChange}
+                accept="image/png,image/jpeg,image/jpg,image/webp"
+                className="hidden"
+                id="merchant-header-file-input"
+              />
+
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                {/* Live Card Header Preview */}
+                <div className="lg:col-span-6 space-y-2">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider block">
+                    {language === 'es' ? 'Vista Previa en Tarjeta del Directorio' : 'Live Directory Card Banner Preview'}
+                  </span>
+
+                  <div className="relative h-48 rounded-2xl overflow-hidden border border-slate-200 shadow-md bg-slate-900 group">
+                    <img
+                      src={imageUrl || 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=1000&auto=format&fit=crop&q=80'}
+                      alt="Store Header Preview"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-900/30 to-transparent" />
+
+                    {/* Open / Closed Status Pill on Live Preview */}
+                    <div className="absolute top-3 left-3 flex items-center gap-2">
+                      <div className="bg-emerald-600/90 text-white font-extrabold text-[11px] px-2.5 py-1 rounded-lg border border-emerald-400/40 flex items-center gap-1.5 shadow-md backdrop-blur-md">
+                        <span className="w-2 h-2 rounded-full bg-emerald-300 animate-pulse" />
+                        <span>Open Now</span>
+                      </div>
+                      <div className="bg-slate-900/85 text-emerald-400 font-extrabold text-[11px] px-2.5 py-1 rounded-lg border border-slate-700/80 flex items-center gap-1 shadow-md backdrop-blur-md">
+                        <Tag className="w-3 h-3 text-emerald-400" />
+                        <span>{pointsRate} pts/USD</span>
+                      </div>
+                    </div>
+
+                    <div className="absolute top-3 right-3 bg-blue-600 text-white font-bold text-xs px-2.5 py-1 rounded-lg shadow-md flex items-center gap-1">
+                      <MapPin className="w-3 h-3" />
+                      <span>{city || 'San Francisco'}</span>
+                    </div>
+
+                    {/* Logo & Name on Header */}
+                    <div className="absolute bottom-3 left-3 right-3 flex items-end gap-2.5">
+                      {logo ? (
+                        <img
+                          src={logo}
+                          alt="Store Logo"
+                          className="w-11 h-11 rounded-xl object-cover bg-white p-0.5 border-2 border-white/90 shadow-md shrink-0"
+                        />
+                      ) : (
+                        <div className="w-11 h-11 rounded-xl bg-slate-800 border border-white/30 text-white flex items-center justify-center font-bold text-sm shrink-0 shadow-md">
+                          <Building className="w-5 h-5 text-blue-300" />
+                        </div>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-blue-200 bg-slate-900/80 px-2 py-0.5 rounded-md border border-blue-400/30">
+                          {category}
+                        </span>
+                        <h4 className="text-base font-extrabold text-white mt-1 leading-tight truncate">
+                          {name || 'Store Business Name'}
+                        </h4>
+                      </div>
+                    </div>
+                  </div>
+
+                  {imageUrl && (
+                    <div className="flex items-center justify-between pt-1">
+                      <span className="text-[11px] text-slate-500 truncate max-w-xs">
+                        {language === 'es' ? 'Imagen asignada' : 'Header configured'}
+                      </span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => headerFileInputRef.current?.click()}
+                          className="px-2.5 py-1 text-[11px] font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition cursor-pointer"
+                        >
+                          {language === 'es' ? 'Cambiar Foto' : 'Replace Photo'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemoveHeaderImage}
+                          className="px-2.5 py-1 text-[11px] font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition cursor-pointer"
+                        >
+                          <Trash2 className="w-3 h-3 inline mr-1" />
+                          {language === 'es' ? 'Eliminar' : 'Remove'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Upload & Controls Panel */}
+                <div className="lg:col-span-6">
+                  {headerInputMode === 'upload' && (
+                    <div
+                      onDragOver={handleHeaderDragOver}
+                      onDragLeave={handleHeaderDragLeave}
+                      onDrop={handleHeaderDrop}
+                      onClick={() => headerFileInputRef.current?.click()}
+                      className={`border-2 border-dashed rounded-2xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center gap-3 min-h-[192px] ${
+                        isDraggingHeader
+                          ? 'border-blue-500 bg-blue-50/80 scale-[1.01]'
+                          : 'border-slate-300 hover:border-blue-400 bg-white hover:bg-slate-50/60'
+                      }`}
+                    >
+                      <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-xs">
+                        <Camera className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-bold text-slate-800">
+                          {language === 'es'
+                            ? 'Arrastra y suelta tu foto de encabezado aquí'
+                            : 'Drag and drop your store card header photo here'}
+                        </p>
+                        <p className="text-[11px] text-slate-500 mt-1">
+                          {language === 'es'
+                            ? 'O haz clic para seleccionar archivo desde tu dispositivo (PNG, JPG, WebP hasta 8MB)'
+                            : 'Or click to select image file from your device (PNG, JPG, WebP up to 8MB)'}
+                        </p>
+                      </div>
+                      <span className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-xs transition">
+                        {language === 'es' ? 'Seleccionar Foto de Encabezado' : 'Select Header Photo File'}
+                      </span>
+                    </div>
+                  )}
+
+                  {headerInputMode === 'presets' && (
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
+                      <label className="text-xs font-bold text-slate-800 block">
+                        {language === 'es' ? 'Fotografías de Portada Curadas' : 'Curated Store Header Photos'}
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { title: 'Artisan Coffee', url: 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?w=1000&auto=format&fit=crop&q=80' },
+                          { title: 'Fashion Boutique', url: 'https://images.unsplash.com/photo-1441986300917-64674bd600d8?w=1000&auto=format&fit=crop&q=80' },
+                          { title: 'Organic Market', url: 'https://images.unsplash.com/photo-1542838132-92c53300491e?w=1000&auto=format&fit=crop&q=80' },
+                          { title: 'Tech Gadgets', url: 'https://images.unsplash.com/photo-1550009158-9ebf69173e03?w=1000&auto=format&fit=crop&q=80' },
+                          { title: 'Bistro & Dining', url: 'https://images.unsplash.com/photo-1517248135467-4c7edcad34c4?w=1000&auto=format&fit=crop&q=80' },
+                          { title: 'Artisan Bakery', url: 'https://images.unsplash.com/photo-1509440159596-0249088772ff?w=1000&auto=format&fit=crop&q=80' }
+                        ].map((preset) => (
+                          <button
+                            key={preset.title}
+                            type="button"
+                            onClick={() => {
+                              setImageUrl(preset.url);
+                              showToast(`Applied preset: ${preset.title}`, 'success');
+                            }}
+                            className={`relative h-20 rounded-xl overflow-hidden border-2 transition group cursor-pointer ${
+                              imageUrl === preset.url ? 'border-blue-600 ring-2 ring-blue-500/30' : 'border-transparent hover:border-slate-300'
+                            }`}
+                          >
+                            <img src={preset.url} alt={preset.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" />
+                            <div className="absolute inset-0 bg-black/40 flex items-end p-1.5">
+                              <span className="text-[10px] font-bold text-white leading-tight drop-shadow-xs">{preset.title}</span>
+                            </div>
+                            {imageUrl === preset.url && (
+                              <div className="absolute top-1 right-1 bg-blue-600 text-white p-0.5 rounded-full">
+                                <Check className="w-3 h-3" />
+                              </div>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {headerInputMode === 'url' && (
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200 space-y-3">
+                      <label className="text-xs font-bold text-slate-700 block">
+                        {language === 'es' ? 'Enlace Directo a Imagen de Portada (URL)' : 'Direct Header Image URL'}
+                      </label>
+                      <div className="flex gap-2 items-center">
+                        <input
+                          type="url"
+                          value={imageUrl}
+                          onChange={(e) => setImageUrl(e.target.value)}
+                          placeholder="https://images.unsplash.com/..."
+                          className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-medium text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
+                        />
+                        {imageUrl && (
+                          <button
+                            type="button"
+                            onClick={() => setImageUrl('')}
+                            className="p-2 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 transition cursor-pointer"
+                            title="Clear URL"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500">
+                        {language === 'es'
+                          ? 'Ingresa la URL pública de alta resolución para la cabecera de la tarjeta.'
+                          : 'Paste a direct high-resolution web image link (HTTPS).'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -402,29 +1037,6 @@ export const MerchantStoreProfileEditor: React.FC<MerchantStoreProfileEditorProp
                     ))}
                   </select>
                   <Tag className="w-4 h-4 text-slate-400 absolute right-3 top-3 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* Cover Image URL */}
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="text-xs font-bold text-slate-700">
-                  {language === 'es' ? 'URL de Imagen de Portada' : 'Store Cover Image URL'}
-                </label>
-                <div className="flex gap-3 items-center">
-                  <input
-                    type="url"
-                    value={imageUrl}
-                    onChange={(e) => setImageUrl(e.target.value)}
-                    placeholder="https://images.unsplash.com/..."
-                    className="flex-1 px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-medium text-slate-900 focus:bg-white focus:outline-hidden focus:ring-2 focus:ring-blue-500/20"
-                  />
-                  {imageUrl && (
-                    <img
-                      src={imageUrl}
-                      alt="Store Cover"
-                      className="w-12 h-12 rounded-xl object-cover border border-slate-200 shadow-xs shrink-0"
-                    />
-                  )}
                 </div>
               </div>
 

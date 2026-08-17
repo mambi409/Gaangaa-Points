@@ -23,10 +23,10 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
   onProcessScan
 }) => {
   const { t, language } = useLanguage();
-  const [passIdInput, setPassIdInput] = useState('PASS-9842-SF');
+  const [passIdInput, setPassIdInput] = useState('');
   const [actionType, setActionType] = useState<'earn' | 'redeem_voucher' | 'store_poster'>('earn');
-  const [saleAmount, setSaleAmount] = useState('32.00');
-  const [voucherCodeInput, setVoucherCodeInput] = useState('VOUCH-METRO-BEV-88219');
+  const [saleAmount, setSaleAmount] = useState('25.00');
+  const [voucherCodeInput, setVoucherCodeInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [resultMsg, setResultMsg] = useState<{ success: boolean; text: string } | null>(null);
 
@@ -204,7 +204,7 @@ export const POSScannerTerminal: React.FC<POSScannerTerminalProps> = ({
                       type="text"
                       value={passIdInput}
                       onChange={(e) => setPassIdInput(e.target.value)}
-                      placeholder="PASS-9842-SF"
+                      placeholder="e.g. PASS-XXXX-SF"
                       className="w-full px-3 py-2.5 rounded-lg bg-slate-50 border border-slate-200 text-xs font-mono font-bold text-slate-900 focus:outline-hidden"
                     />
                   </div>

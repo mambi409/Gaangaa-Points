@@ -125,21 +125,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         try {
           const cred = await signInWithEmailAndPassword(auth, username.trim(), password);
           if (cred.user && !cred.user.emailVerified) {
-            // Unverified Firebase Auth user
-            const isBypass = ['mambiadmin', 'mambi409', 'merchant_sf'].includes(username.trim().toLowerCase());
-            if (!isBypass) {
-              setPendingUser({
-                email: cred.user.email || username.trim(),
-                username: username.trim().split('@')[0],
-                fullName: username.trim().split('@')[0],
-                passId: `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
-                pinCode: '12345',
-                role: accountType
-              });
-              setMode('verify_email');
-              setIsLoading(false);
-              return;
-            }
+            setPendingUser({
+              email: cred.user.email || username.trim(),
+              username: username.trim().split('@')[0],
+              fullName: username.trim().split('@')[0],
+              passId: `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
+              pinCode: '12345',
+              role: accountType
+            });
+            setMode('verify_email');
+            setIsLoading(false);
+            return;
           }
         } catch (fbErr) {
           console.log('Firebase Auth sign-in note:', fbErr);
@@ -228,8 +224,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
           }
 
           if (userDoc && userDoc.password === password) {
-            const isBypass = ['mambiadmin', 'mambi409', 'merchant_sf'].includes((userDoc.username || '').toLowerCase());
-            if (!isBypass && (userDoc.emailVerified === false || userDoc.status === 'pending_verification')) {
+            if (userDoc.emailVerified === false || userDoc.status === 'pending_verification') {
               setIsLoading(false);
               setPendingUser({
                 email: userDoc.email || `${userDoc.username}@example.com`,
@@ -246,13 +241,13 @@ export const LoginModal: React.FC<LoginModalProps> = ({
             }
 
             setIsLoading(false);
-            const userRole = userDoc.role || (userDoc.username.toLowerCase() === 'mambiadmin' ? 'admin' : (accountType === 'merchant' ? 'merchant' : 'user'));
+            const userRole = userDoc.role || (accountType === 'merchant' ? 'merchant' : 'user');
             onLoginSuccess(
               {
                 username: userDoc.username,
                 name: userDoc.fullName || userDoc.username,
                 email: userDoc.email,
-                passId: userDoc.passId || (userRole === 'admin' ? 'ADMIN-409-SF' : userRole === 'merchant' ? `MERCHANT-POS-${Math.floor(100 + Math.random() * 900)}` : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`),
+                passId: userDoc.passId || (userRole === 'admin' ? `ADMIN-${Math.floor(1000 + Math.random() * 9000)}-SF` : userRole === 'merchant' ? `MERCHANT-POS-${Math.floor(100 + Math.random() * 900)}` : `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`),
                 pinCode: userDoc.pinCode || '12345',
                 token: `token-fs-${Date.now()}-${userDoc.username}`,
                 role: userRole
@@ -264,65 +259,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         } catch (fsErr) {
           console.log('Client Firestore fallback check error:', fsErr);
         }
-      }
-
-      if (
-        (username.trim().toLowerCase() === 'mambiadmin' || username.trim().toLowerCase() === 'mambiadmin@omniloyalty.internal') &&
-        password === '409H!llarY409'
-      ) {
-        setIsLoading(false);
-        onLoginSuccess(
-          {
-            username: 'mambiadmin',
-            name: 'Mambi Administrator',
-            email: 'mambiadmin@omniloyalty.internal',
-            passId: 'ADMIN-409-SF',
-            pinCode: '40900',
-            token: 'token-mambiadmin',
-            role: 'admin'
-          },
-          'admin'
-        );
-        return;
-      }
-
-      if (
-        (username.trim().toLowerCase() === 'mambi409' || username.trim().toLowerCase() === 'mambi409@example.com') &&
-        password === '409H!llarY409'
-      ) {
-        setIsLoading(false);
-        onLoginSuccess(
-          {
-            username: 'mambi409',
-            name: 'Alex Rivera',
-            email: 'mambi409@example.com',
-            passId: 'PASS-9842-SF',
-            pinCode: '12345',
-            token: 'token-mambi409',
-            role: 'user'
-          },
-          'user'
-        );
-        return;
-      }
-
-      if (
-        (username.trim().toLowerCase() === 'merchant_sf' || username.trim().toLowerCase() === 'merchant@roastery.com') &&
-        password === 'posSecret2026'
-      ) {
-        setIsLoading(false);
-        onLoginSuccess(
-          {
-            username: 'merchant_sf',
-            name: 'Artisanal Roastery POS',
-            email: 'merchant@roastery.com',
-            passId: 'MERCHANT-POS-101',
-            token: 'token-merchant-101',
-            role: 'merchant'
-          },
-          'merchant'
-        );
-        return;
       }
 
       setError(data?.error || 'Invalid email/username or password.');
@@ -627,33 +563,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     }, 600);
   };
 
-  const handleAutofillCustomerDemo = () => {
-    setAccountType('user');
-    setMode('login');
-    setUsername('mambi409');
-    setPassword('409H!llarY409');
-    setError(null);
-    setSuccessMsg(null);
-  };
-
-  const handleAutofillMerchantDemo = () => {
-    setAccountType('merchant');
-    setMode('login');
-    setUsername('merchant_sf');
-    setPassword('posSecret2026');
-    setError(null);
-    setSuccessMsg(null);
-  };
-
-  const handleAutofillAdminDemo = () => {
-    setAccountType('user');
-    setMode('login');
-    setUsername('mambiadmin');
-    setPassword('409H!llarY409');
-    setError(null);
-    setSuccessMsg(null);
-  };
-
   return (
     <AnimatePresence>
       <div className="fixed inset-0 z-50 flex items-center justify-center p-4 overflow-y-auto">
@@ -807,42 +716,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 <UserPlus className="w-3.5 h-3.5" />
                 {t('nav.register')}
               </button>
-            </div>
-          )}
-
-          {/* Quick Demo Autofill Notice */}
-          {mode === 'login' && (
-            <div className="p-3 bg-blue-50/80 dark:bg-blue-950/60 rounded-xl border border-blue-200 dark:border-blue-900/80 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-1.5 text-xs font-bold text-blue-900 dark:text-blue-200">
-                  <KeyRound className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                  {t('auth.demo_autofill')}
-                </div>
-                <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                  <button
-                    type="button"
-                    onClick={handleAutofillCustomerDemo}
-                    className="text-[10px] font-extrabold text-blue-700 hover:text-blue-900 bg-white dark:bg-slate-800 dark:text-blue-300 px-2 py-0.5 rounded-md border border-blue-200 dark:border-blue-700 cursor-pointer"
-                  >
-                    {t('auth.demo_member')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAutofillAdminDemo}
-                    className="text-[10px] font-extrabold text-amber-700 hover:text-amber-900 bg-amber-50 dark:bg-amber-950/60 dark:text-amber-300 px-2 py-0.5 rounded-md border border-amber-300 dark:border-amber-700 cursor-pointer flex items-center gap-1"
-                  >
-                    <ShieldCheck className="w-2.5 h-2.5" />
-                    Admin
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleAutofillMerchantDemo}
-                    className="text-[10px] font-extrabold text-indigo-700 hover:text-indigo-900 bg-white dark:bg-slate-800 dark:text-indigo-300 px-2 py-0.5 rounded-md border border-indigo-200 dark:border-indigo-700 cursor-pointer"
-                  >
-                    {t('auth.demo_merchant')}
-                  </button>
-                </div>
-              </div>
             </div>
           )}
 
@@ -1082,7 +955,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   required
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
-                  placeholder={accountType === 'user' ? 'e.g. mambi409@example.com or mambi409' : 'e.g. merchant@domain.com'}
+                  placeholder={accountType === 'user' ? 'e.g. your-username or you@email.com' : 'e.g. merchant@domain.com'}
                   className="w-full px-3.5 py-2.5 rounded-xl bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-900 dark:text-white focus:outline-hidden focus:ring-2 focus:ring-blue-500"
                 />
               </div>

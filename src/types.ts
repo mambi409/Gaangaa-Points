@@ -28,6 +28,7 @@ export interface Store {
   rating: number;
   reviewCount: number;
   image: string;
+  logo?: string;
   pointsRate: number; // e.g. 10 points per $1 spent
   pointsBalance?: number; // Store merchant points reserve balance
   description: string;

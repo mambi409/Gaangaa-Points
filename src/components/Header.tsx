@@ -13,7 +13,8 @@ import {
   LogOut,
   LogIn,
   UserPlus,
-  Globe
+  Globe,
+  Lock
 } from 'lucide-react';
 import { UserWallet, UserRole } from '../types';
 import { useLanguage } from '../context/LanguageContext';
@@ -24,8 +25,8 @@ interface HeaderProps {
   wallet: UserWallet;
   unreadNotifsCount: number;
   onOpenNotifications: () => void;
-  activeView: 'home' | 'news' | 'wallet' | 'explore' | 'map';
-  onViewChange: (view: 'home' | 'news' | 'wallet' | 'explore' | 'map') => void;
+  activeView: 'home' | 'news' | 'wallet' | 'explore' | 'map' | 'dashboard';
+  onViewChange: (view: 'home' | 'news' | 'wallet' | 'explore' | 'map' | 'dashboard') => void;
   authUser: { username: string; name: string; email?: string; passId?: string; pinCode?: string; role?: 'user' | 'merchant' | 'admin' } | null;
   onLogout: () => void;
   onOpenLogin: (mode?: 'login' | 'register') => void;
@@ -111,7 +112,8 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <Wallet className="w-3.5 h-3.5" />
-                {t('nav.wallet')}
+                <span>{t('nav.wallet')}</span>
+                {!authUser && <Lock className="w-2.5 h-2.5 opacity-60 text-amber-500" />}
               </button>
               <button
                 onClick={() => onViewChange('explore')}
@@ -129,6 +131,44 @@ export const Header: React.FC<HeaderProps> = ({
                 className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
                   activeView === 'map'
                     ? 'bg-blue-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <Navigation className="w-3.5 h-3.5" />
+                {t('nav.map')}
+              </button>
+            </>
+          )}
+
+          {currentRole === 'merchant' && (
+            <>
+              <button
+                onClick={() => onViewChange('dashboard')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                  activeView === 'dashboard' || activeView === 'wallet'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <ShieldCheck className="w-3.5 h-3.5" />
+                {t('nav.merchant_dashboard')}
+              </button>
+              <button
+                onClick={() => onViewChange('explore')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                  activeView === 'explore'
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" />
+                {t('nav.stores')}
+              </button>
+              <button
+                onClick={() => onViewChange('map')}
+                className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition cursor-pointer ${
+                  activeView === 'map'
+                    ? 'bg-indigo-600 text-white shadow-xs'
                     : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-white/60 dark:hover:bg-slate-700/60'
                 }`}
               >
@@ -313,11 +353,18 @@ export const Header: React.FC<HeaderProps> = ({
                   onViewChange('wallet');
                 }
               }}
-              className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
+              className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer relative ${
                 activeView === 'wallet' && authUser ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'
               }`}
             >
-              <Wallet className="w-4 h-4" />
+              <div className="relative">
+                <Wallet className="w-4 h-4" />
+                {!authUser && (
+                  <span className="absolute -top-1 -right-1.5 text-[8px] text-amber-500">
+                    <Lock className="w-2.5 h-2.5" />
+                  </span>
+                )}
+              </div>
               <span>{t('nav.wallet')}</span>
             </button>
             <button
@@ -333,6 +380,36 @@ export const Header: React.FC<HeaderProps> = ({
               onClick={() => onViewChange('map')}
               className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
                 activeView === 'map' ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500'
+              }`}
+            >
+              <Navigation className="w-4 h-4" />
+              <span>{t('nav.map')}</span>
+            </button>
+          </>
+        ) : currentRole === 'merchant' ? (
+          <>
+            <button
+              onClick={() => onViewChange('dashboard')}
+              className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
+                activeView === 'dashboard' || activeView === 'wallet' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4" />
+              <span>{t('nav.merchant_dashboard')}</span>
+            </button>
+            <button
+              onClick={() => onViewChange('explore')}
+              className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
+                activeView === 'explore' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'
+              }`}
+            >
+              <Store className="w-4 h-4" />
+              <span>{t('nav.stores')}</span>
+            </button>
+            <button
+              onClick={() => onViewChange('map')}
+              className={`flex flex-col items-center gap-0.5 text-[10px] font-bold py-1 px-2 rounded-lg cursor-pointer ${
+                activeView === 'map' ? 'text-indigo-600 dark:text-indigo-400' : 'text-slate-500'
               }`}
             >
               <Navigation className="w-4 h-4" />

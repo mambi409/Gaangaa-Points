@@ -228,10 +228,18 @@ export const MerchantDashboard: React.FC<MerchantDashboardProps> = ({
 
       {/* Top Merchant Navigation Header & Store Selector */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col lg:flex-row items-start lg:items-center justify-between gap-6">
-        <div className="flex items-center gap-3">
-          <div className="p-3 rounded-xl bg-blue-50 text-blue-600 border border-blue-200">
-            <StoreIcon className="w-7 h-7" />
-          </div>
+        <div className="flex items-center gap-3.5">
+          {activeStore.logo ? (
+            <img
+              src={activeStore.logo}
+              alt={activeStore.name}
+              className="w-14 h-14 rounded-2xl object-cover border-2 border-blue-200 bg-white p-0.5 shadow-xs shrink-0"
+            />
+          ) : (
+            <div className="p-3 rounded-2xl bg-blue-50 text-blue-600 border border-blue-200 shrink-0">
+              <StoreIcon className="w-7 h-7" />
+            </div>
+          )}
           <div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-bold uppercase tracking-wider text-blue-700">

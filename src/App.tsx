@@ -58,9 +58,12 @@ export default function App() {
     return 'user';
   });
 
-  const [activeView, setActiveView] = useState<'home' | 'news' | 'wallet' | 'explore' | 'map'>(
-    authUser ? (authUser.role === 'merchant' ? 'wallet' : 'wallet') : 'home'
-  );
+  const [activeView, setActiveView] = useState<'home' | 'news' | 'wallet' | 'explore' | 'map' | 'dashboard'>(() => {
+    if (authUser) {
+      return authUser.role === 'merchant' ? 'dashboard' : 'wallet';
+    }
+    return 'home';
+  });
 
   // Login Modal state
   const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
@@ -141,10 +144,12 @@ export default function App() {
     if (role === 'admin') {
       setCurrentRole('admin');
     } else if (role === 'user') {
+      setCurrentRole('user');
       setActiveView('wallet'); // Customer goes to Digital Wallet page
       fetchWalletData();
     } else {
       setCurrentRole('merchant'); // Merchant goes to Merchant Dashboard
+      setActiveView('dashboard'); // Explicitly activate Merchant Dashboard view
       const candidateStoreId = user.storeId || `store-${user.username.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
       setSelectedMerchantStoreId(candidateStoreId);
       fetchStoresData();
@@ -470,8 +475,13 @@ export default function App() {
             return;
           }
           setCurrentRole(role);
-          if (role === 'user' && activeView === 'home' && authUser) {
+          if (role === 'user') {
             setActiveView('wallet');
+          } else if (role === 'merchant') {
+            setActiveView('dashboard');
+            if (authUser?.storeId) {
+              setSelectedMerchantStoreId(authUser.storeId);
+            }
           }
         }}
         wallet={wallet}
@@ -481,6 +491,10 @@ export default function App() {
         onViewChange={(view) => {
           if (view === 'wallet' && !authUser) {
             handleOpenAuth('user', 'login');
+            return;
+          }
+          if (view === 'dashboard' && (!authUser || authUser.role !== 'merchant')) {
+            handleOpenAuth('merchant', 'login');
             return;
           }
           setActiveView(view);
@@ -510,6 +524,7 @@ export default function App() {
             onSwitchRole={(r) => {
               setCurrentRole(r);
               if (r === 'user') setActiveView('wallet');
+              if (r === 'merchant') setActiveView('dashboard');
             }}
           />
         </main>
@@ -519,70 +534,61 @@ export default function App() {
             /* Public Home Landing Page */
             <Home
               stores={stores}
+              authUser={authUser}
+              currentRole={currentRole}
               onOpenMemberAuth={(mode) => handleOpenAuth('user', mode)}
-              onOpenMerchantAuth={() => handleOpenAuth('merchant', 'login')}
+              onOpenMerchantAuth={() => {
+                if (authUser?.role === 'merchant') {
+                  setCurrentRole('merchant');
+                  setActiveView('dashboard');
+                } else {
+                  handleOpenAuth('merchant', 'login');
+                }
+              }}
               onExploreStores={() => setActiveView('explore')}
+              onGoToDashboard={() => {
+                setCurrentRole('merchant');
+                setActiveView('dashboard');
+              }}
             />
           ) : activeView === 'news' ? (
             /* Gobiernu.cw & Community News View */
             <NewsView onOpenStoreExplore={() => setActiveView('explore')} />
-          ) : currentRole === 'user' ? (
-            <>
-              {/* View Switching Logic for Customer App */}
-              {activeView === 'wallet' && (
-                <DigitalWallet
-                  wallet={wallet}
-                  transactions={transactions}
-                  onOpenScanEarn={() => setIsScanEarnOpen(true)}
-                  onSelectStore={(storeId) => {
-                    const s = stores.find((item) => item.id === storeId);
-                    if (s) {
-                      setSelectedStore(s);
-                      setActiveView('explore');
-                    }
-                  }}
-                />
-              )}
-
-              {activeView === 'explore' && (
-                <StoreFinder
-                  stores={stores}
-                  rewards={rewards.length > 0 ? rewards : wallet.vouchers.map(v => ({
-                    id: v.rewardId,
-                    storeId: v.storeId,
-                    storeName: v.storeName,
-                    title: v.title,
-                    description: 'Store reward deal',
-                    pointsCost: v.pointsSpent,
-                    category: 'General',
-                    image: '',
-                    expiryDays: 30,
-                    code: v.qrCode,
-                    discountValue: 'Special Reward'
-                  }))}
-                  userPoints={wallet.pointsBalance}
-                  onNavigateToStore={handleStartNavigation}
-                  onRedeemReward={handleRedeemReward}
-                  selectedCategory={selectedCategory}
-                  onSelectCategory={setSelectedCategory}
-                  searchQuery={searchQuery}
-                  onSearchChange={setSearchQuery}
-                />
-              )}
-
-              {activeView === 'map' && (
-                <InteractiveMap
-                  stores={stores}
-                  selectedStore={selectedStore}
-                  onSelectStore={setSelectedStore}
-                  userLat={INITIAL_USER_LOCATION.lat}
-                  userLng={INITIAL_USER_LOCATION.lng}
-                  activeRoute={activeRoute}
-                  onStartNavigation={handleStartNavigation}
-                />
-              )}
-            </>
-          ) : (
+          ) : activeView === 'explore' ? (
+            <StoreFinder
+              stores={stores}
+              rewards={rewards.length > 0 ? rewards : wallet.vouchers.map(v => ({
+                id: v.rewardId,
+                storeId: v.storeId,
+                storeName: v.storeName,
+                title: v.title,
+                description: 'Store reward deal',
+                pointsCost: v.pointsSpent,
+                category: 'General',
+                image: '',
+                expiryDays: 30,
+                code: v.qrCode,
+                discountValue: 'Special Reward'
+              }))}
+              userPoints={wallet.pointsBalance}
+              onNavigateToStore={handleStartNavigation}
+              onRedeemReward={handleRedeemReward}
+              selectedCategory={selectedCategory}
+              onSelectCategory={setSelectedCategory}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
+            />
+          ) : activeView === 'map' ? (
+            <InteractiveMap
+              stores={stores}
+              selectedStore={selectedStore}
+              onSelectStore={setSelectedStore}
+              userLat={INITIAL_USER_LOCATION.lat}
+              userLng={INITIAL_USER_LOCATION.lng}
+              activeRoute={activeRoute}
+              onStartNavigation={handleStartNavigation}
+            />
+          ) : currentRole === 'merchant' || activeView === 'dashboard' ? (
             /* Merchant Dashboard View */
             <MerchantDashboard
               stores={stores}
@@ -598,6 +604,31 @@ export default function App() {
                 if (selectedStore?.id === updatedStore.id) {
                   setSelectedStore(updatedStore);
                 }
+              }}
+            />
+          ) : (
+            /* Digital Wallet View for Members */
+            <DigitalWallet
+              wallet={wallet}
+              transactions={transactions}
+              authUser={authUser}
+              onOpenLogin={(mode) => handleOpenAuth('user', mode || 'login')}
+              onExploreStores={() => setActiveView('explore')}
+              onOpenScanEarn={() => {
+                if (!authUser || authUser.role !== 'user') {
+                  handleOpenAuth('user', 'login');
+                } else {
+                  setIsScanEarnOpen(true);
+                }
+              }}
+              onSelectStore={(storeId) => {
+                if (storeId) {
+                  const s = stores.find((item) => item.id === storeId);
+                  if (s) {
+                    setSelectedStore(s);
+                  }
+                }
+                setActiveView('explore');
               }}
             />
           )}

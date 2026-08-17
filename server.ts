@@ -141,8 +141,7 @@ app.post('/api/auth/login', async (req, res) => {
 
     if (foundUser && foundUser.password === password) {
       // Check if user account is pending email verification
-      const isDefaultBypass = ['mambiadmin', 'mambi409', 'merchant_sf'].includes(foundUser.username.toLowerCase());
-      if (!isDefaultBypass && (foundUser.emailVerified === false || foundUser.status === 'pending_verification')) {
+      if (foundUser.emailVerified === false || foundUser.status === 'pending_verification') {
         return res.status(403).json({
           success: false,
           pendingVerification: true,
@@ -847,7 +846,7 @@ app.get('/api/navigation/route', (req, res) => {
     pathPoints.push([store.lat, store.lng]);
 
     steps.push({
-      instruction: `Head ${latDiff > 0 ? 'North' : 'South'} toward Main Ave`,
+      instruction: `Head ${latDiff > 0 ? 'North' : 'South'} on Breedestraat toward Handelskade`,
       distanceMeters: Math.round(distKm * 400),
       durationSeconds: Math.round(durationMin * 24),
       lat: origLat,
@@ -856,7 +855,7 @@ app.get('/api/navigation/route', (req, res) => {
     });
 
     steps.push({
-      instruction: `Turn ${lngDiff > 0 ? 'Right' : 'Left'} onto Center St`,
+      instruction: `Turn ${lngDiff > 0 ? 'East' : 'West'} onto Schottegatweg / Caracasbaaiweg`,
       distanceMeters: Math.round(distKm * 300),
       durationSeconds: Math.round(durationMin * 18),
       lat: way1Lat,
@@ -865,7 +864,7 @@ app.get('/api/navigation/route', (req, res) => {
     });
 
     steps.push({
-      instruction: `Continue past 4th Street intersection for 2 blocks`,
+      instruction: `Continue along coastal boulevard toward destination`,
       distanceMeters: Math.round(distKm * 200),
       durationSeconds: Math.round(durationMin * 12),
       lat: way2Lat,
@@ -1258,7 +1257,8 @@ app.post('/api/merchant/store/update', async (req, res) => {
       schedule,
       managerName,
       socialHandle,
-      image
+      image,
+      logo
     } = req.body;
 
     if (!id) {
@@ -1288,7 +1288,8 @@ app.post('/api/merchant/store/update', async (req, res) => {
         schedule: schedule !== undefined ? schedule : storesData[existingStoreIdx].schedule,
         managerName: managerName !== undefined ? managerName : storesData[existingStoreIdx].managerName,
         socialHandle: socialHandle !== undefined ? socialHandle : storesData[existingStoreIdx].socialHandle,
-        image: image !== undefined ? image : storesData[existingStoreIdx].image
+        image: image !== undefined ? image : storesData[existingStoreIdx].image,
+        logo: logo !== undefined ? logo : storesData[existingStoreIdx].logo
       };
       storesData[existingStoreIdx] = updatedStore;
     } else {
@@ -1297,12 +1298,13 @@ app.post('/api/merchant/store/update', async (req, res) => {
         name: name || 'New Partner Store',
         category: category || 'Coffee',
         address: address || '100 Market St',
-        city: city || 'San Francisco',
-        lat: lat ? parseFloat(lat) : 37.7891,
-        lng: lng ? parseFloat(lng) : -122.4082,
+        city: city || 'Willemstad',
+        lat: lat ? parseFloat(lat) : 12.1054,
+        lng: lng ? parseFloat(lng) : -68.9332,
         rating: 5.0,
         reviewCount: 1,
         image: image || 'https://images.unsplash.com/photo-1501339847302-ac426a4a7cbb?auto=format&fit=crop&w=600&q=80',
+        logo: logo || undefined,
         pointsRate: pointsRate ? parseInt(pointsRate, 10) : 10,
         description: description || 'Loyalty partner store outlet',
         openHours: openHours || '8:00 AM - 8:00 PM',
@@ -1612,12 +1614,12 @@ app.get('/api/admin/overview', (req, res) => {
 
     res.json({
       stats: {
-        totalUsers: usersDB.length + 1420,
+        totalUsers: usersDB.length,
         totalStores: storesData.length,
         totalRewards: rewardsData.length,
-        totalTransactions: transactionsData.length + 4890,
-        totalPointsIssued: totalPointsEarned + 185400,
-        totalPointsRedeemed: totalPointsRedeemed + 64200,
+        totalTransactions: transactionsData.length,
+        totalPointsIssued: totalPointsEarned,
+        totalPointsRedeemed: totalPointsRedeemed,
         totalEstRevenue: Math.round(totalEstRevenue * 100) / 100,
         firestoreStatus: {
           connected: true,
@@ -1631,13 +1633,13 @@ app.get('/api/admin/overview', (req, res) => {
         fullName: u.fullName,
         email: u.email,
         passId: u.passId,
-        role: u.role || (u.username.toLowerCase() === 'mambiadmin' ? 'admin' : 'user'),
+        role: u.role || 'user',
         pinCode: u.pinCode ? '••••• (Set)' : 'Unset',
-        pointsBalance: u.username.toLowerCase() === 'mambi409' ? walletData.pointsBalance : (u.pointsBalance ?? 100),
-        lifetimePoints: u.username.toLowerCase() === 'mambi409' ? walletData.lifetimePoints : (u.lifetimePoints ?? 250),
-        currentTier: u.username.toLowerCase() === 'mambi409' ? walletData.currentTier : (u.currentTier ?? 'Bronze'),
+        pointsBalance: u.pointsBalance ?? 0,
+        lifetimePoints: u.lifetimePoints ?? u.pointsBalance ?? 0,
+        currentTier: u.currentTier || ( (u.pointsBalance ?? 0) >= 2500 ? 'Platinum' : (u.pointsBalance ?? 0) >= 1200 ? 'Gold' : (u.pointsBalance ?? 0) >= 500 ? 'Silver' : 'Bronze'),
         status: u.status || 'active',
-        createdAt: u.createdAt || new Date(Date.now() - 3600000 * 24 * 30).toISOString()
+        createdAt: u.createdAt || new Date().toISOString()
       })),
       posts: postsData,
       recentTransactions: transactionsData.slice(0, 15),
@@ -2058,23 +2060,22 @@ app.get('/api/admin/users', async (req, res) => {
 
     // Map and enrich all users
     const list: AdminUserItem[] = usersDB.map((u) => {
-      const isMambi = u.username.toLowerCase() === 'mambi409';
-      const pts = isMambi ? walletData.pointsBalance : (u.pointsBalance ?? 100);
-      const tier = isMambi ? walletData.currentTier : (u.currentTier ?? (pts >= 2500 ? 'Platinum' : pts >= 1200 ? 'Gold' : pts >= 500 ? 'Silver' : 'Bronze'));
-      const lifetime = isMambi ? walletData.lifetimePoints : (u.lifetimePoints ?? pts + 200);
+      const pts = u.pointsBalance ?? 0;
+      const tier = u.currentTier || (pts >= 2500 ? 'Platinum' : pts >= 1200 ? 'Gold' : pts >= 500 ? 'Silver' : 'Bronze');
+      const lifetime = u.lifetimePoints ?? pts;
 
       return {
         username: u.username,
         fullName: u.fullName || u.username,
         email: u.email || `${u.username}@omniloyalty.internal`,
         passId: u.passId || `PASS-${Math.floor(1000 + Math.random() * 9000)}-SF`,
-        role: u.role || (u.username.toLowerCase() === 'mambiadmin' ? 'admin' : 'user'),
+        role: u.role || 'user',
         pinCode: u.pinCode ? '••••• (Set)' : 'Unset',
         pointsBalance: pts,
         lifetimePoints: lifetime,
         currentTier: tier,
         status: u.status || 'active',
-        createdAt: u.createdAt || new Date(Date.now() - 3600000 * 24 * 30).toISOString()
+        createdAt: u.createdAt || new Date().toISOString()
       };
     });
 
@@ -2098,7 +2099,7 @@ app.get('/api/users', async (req, res) => {
       passId: u.passId,
       role: u.role || 'user',
       currentTier: u.currentTier || 'Bronze',
-      pointsBalance: u.username.toLowerCase() === 'mambi409' ? walletData.pointsBalance : (u.pointsBalance ?? 100)
+      pointsBalance: u.pointsBalance ?? 0
     }));
     res.json({ success: true, count: list.length, users: list });
   } catch (err) {
@@ -2193,18 +2194,10 @@ app.put('/api/admin/users/update', async (req, res) => {
       const p = parseInt(pointsBalance, 10);
       if (!isNaN(p)) {
         user.pointsBalance = Math.max(0, p);
-        if (clean === 'mambi409') {
-          walletData.pointsBalance = user.pointsBalance;
-          await persistWallet();
-        }
       }
     }
     if (currentTier) {
       user.currentTier = currentTier;
-      if (clean === 'mambi409') {
-        walletData.currentTier = currentTier;
-        await persistWallet();
-      }
     }
 
     await persistUser(user);
@@ -2303,15 +2296,15 @@ app.get('/api/admin/users/:username', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    const pts = clean === 'mambi409' ? walletData.pointsBalance : (user.pointsBalance ?? 100);
-    const tier = clean === 'mambi409' ? walletData.currentTier : (user.currentTier ?? 'Bronze');
+    const pts = user.pointsBalance ?? 0;
+    const tier = user.currentTier || (pts >= 2500 ? 'Platinum' : pts >= 1200 ? 'Gold' : pts >= 500 ? 'Silver' : 'Bronze');
 
     res.json({
       user: {
         ...user,
         pointsBalance: pts,
         currentTier: tier,
-        lifetimePoints: clean === 'mambi409' ? walletData.lifetimePoints : (user.lifetimePoints ?? pts + 150)
+        lifetimePoints: user.lifetimePoints ?? pts
       },
       transactions: transactionsData.slice(0, 10)
     });
@@ -2488,9 +2481,9 @@ app.post('/api/admin/stores/add', async (req, res) => {
       name,
       category: category || 'Coffee',
       address,
-      city: city || 'San Francisco, CA',
-      lat: parseFloat(lat) || 37.785,
-      lng: parseFloat(lng) || -122.41,
+      city: city || 'Willemstad, Curaçao',
+      lat: parseFloat(lat) || 12.1054,
+      lng: parseFloat(lng) || -68.9332,
       rating: parseFloat(rating) || 4.8,
       reviewCount: 1,
       image: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?auto=format&fit=crop&w=800&q=80',

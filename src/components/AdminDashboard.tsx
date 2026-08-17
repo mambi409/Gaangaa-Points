@@ -74,12 +74,10 @@ import {
 import { useLanguage } from '../context/LanguageContext';
 import {
   fetchOrSeedMembers,
-  seedAllDefaultMembersToFirestore,
   saveMemberAccount,
   updateMemberPoints,
   removeMemberAccount,
-  verifyUserEmailDirect,
-  DEFAULT_MEMBER_ACCOUNTS
+  verifyUserEmailDirect
 } from '../lib/memberDatabase';
 
 interface AdminDashboardProps {
@@ -267,30 +265,9 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
       const result = await fetchOrSeedMembers();
       setRegisteredUsers(result.users);
       setLastUsersSyncTime(new Date().toLocaleTimeString());
-      if (result.seededCount > 0) {
-        showToast(`Seeded and retrieved ${result.users.length} member accounts in Firestore database!`, 'success');
-      } else {
-        showToast(`Retrieved ${result.users.length} member accounts from cloud database`, 'success');
-      }
+      showToast(`Retrieved ${result.users.length} member accounts from cloud database`, 'success');
     } catch (err) {
       showToast('Error retrieving member list from database', 'error');
-    } finally {
-      setIsRetrievingUsers(false);
-    }
-  };
-
-  const handleSeedCloudMembers = async () => {
-    setIsRetrievingUsers(true);
-    try {
-      const seeded = await seedAllDefaultMembersToFirestore();
-      const result = await fetchOrSeedMembers();
-      setRegisteredUsers(result.users);
-      setLastUsersSyncTime(new Date().toLocaleTimeString());
-      showToast(`Successfully seeded ${seeded} default members to Firestore database!`, 'success');
-    } catch (err) {
-      console.warn('Seed error:', err);
-      setRegisteredUsers([...DEFAULT_MEMBER_ACCOUNTS]);
-      showToast('Populated 6 default network members to active ledger', 'info');
     } finally {
       setIsRetrievingUsers(false);
     }
@@ -1895,27 +1872,16 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
               <div className="flex flex-wrap items-center gap-2.5">
                 {/* Retrieve / Sync from Cloud Button */}
+                {/* Sync Database Button */}
                 <button
-                  id="admin-retrieve-users-btn"
+                  id="admin-sync-users-btn"
                   onClick={handleRetrieveUsers}
                   disabled={isRetrievingUsers}
                   className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 text-xs font-semibold shadow transition disabled:opacity-50"
                   title="Retrieve latest list of all members from cloud database"
                 >
                   <RefreshCw className={`w-3.5 h-3.5 text-indigo-400 ${isRetrievingUsers ? 'animate-spin' : ''}`} />
-                  <span>{isRetrievingUsers ? 'Retrieving...' : 'Retrieve / Sync List'}</span>
-                </button>
-
-                {/* Seed Default Members to Cloud Database Button */}
-                <button
-                  id="admin-seed-users-btn"
-                  onClick={handleSeedCloudMembers}
-                  disabled={isRetrievingUsers}
-                  className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-200 border border-indigo-500/40 text-xs font-semibold shadow transition disabled:opacity-50"
-                  title="Seed initial network members directly into Firestore database"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
-                  <span>⚡ Seed Cloud DB</span>
+                  <span>{isRetrievingUsers ? 'Syncing...' : 'Sync Database'}</span>
                 </button>
 
                 {/* Export CSV Button */}
@@ -2187,18 +2153,20 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                           <td colSpan={7} className="px-4 py-12 text-center text-slate-400 text-sm">
                             <div className="max-w-md mx-auto space-y-3">
                               <Users className="w-10 h-10 text-slate-600 mx-auto" />
-                              <p className="font-semibold text-slate-300">No member accounts found</p>
+                              <p className="font-semibold text-slate-300">No member accounts found in Firebase</p>
                               <p className="text-xs text-slate-500">
-                                Either no members match your search filter or the database has not been seeded yet.
+                                {userSearchQuery || userRoleFilter !== 'all' || userTierFilter !== 'all' || userStatusFilter !== 'all'
+                                  ? 'No accounts match the current filter criteria.'
+                                  : 'No member accounts currently exist in Firebase. You can create accounts with the button above or register new members.'}
                               </p>
                               <div className="flex items-center justify-center gap-2 pt-2">
                                 <button
                                   type="button"
-                                  onClick={handleSeedCloudMembers}
+                                  onClick={() => setIsCreateUserModalOpen(true)}
                                   className="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow transition flex items-center gap-1.5"
                                 >
-                                  <Sparkles className="w-3.5 h-3.5" />
-                                  <span>Seed Default Members into Database</span>
+                                  <UserPlus className="w-3.5 h-3.5" />
+                                  <span>+ Create Member</span>
                                 </button>
                                 <button
                                   type="button"

@@ -1,6 +1,6 @@
 {
   "name": "OmniLoyalty & Store Finder",
-  "description": "Multi-store rewards wallet, nearby store search, interactive map with turn-by-turn navigation directions, and merchant POS dashboard with push notifications.",
+  "description": "Unified Curaçao rewards wallet, merchant network map with turn-by-turn navigation across Willemstad, Mambo Beach & Jan Thiel, and merchant POS dashboard.",
   "requestFramePermissions": ["geolocation", "notifications"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

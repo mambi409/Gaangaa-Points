@@ -211,92 +211,7 @@ export const INITIAL_AUDIT_LOGS: SystemAuditLog[] = [
 
 export let auditLogsData: SystemAuditLog[] = [...INITIAL_AUDIT_LOGS];
 
-export let usersDB: RegisteredUser[] = [
-  {
-    username: 'mambiadmin',
-    password: '409H!llarY409',
-    fullName: 'Mambi Administrator',
-    email: 'mambiadmin@omniloyalty.internal',
-    passId: 'ADMIN-409-SF',
-    pinCode: '40900',
-    role: 'admin',
-    pointsBalance: 50000,
-    lifetimePoints: 120000,
-    currentTier: 'Platinum',
-    status: 'active',
-    createdAt: '2026-01-10T08:00:00.000Z'
-  },
-  {
-    username: 'mambi409',
-    password: '409H!llarY409',
-    fullName: 'Alex Rivera',
-    email: 'mambi409@example.com',
-    passId: 'PASS-9842-SF',
-    pinCode: '12345',
-    role: 'user',
-    pointsBalance: 1250,
-    lifetimePoints: 2450,
-    currentTier: 'Gold',
-    status: 'active',
-    createdAt: '2026-02-14T14:30:00.000Z'
-  },
-  {
-    username: 'mayalin',
-    password: 'userPass2026',
-    fullName: 'Maya Lin',
-    email: 'maya.lin@sfdesign.co',
-    passId: 'PASS-5512-SF',
-    pinCode: '33412',
-    role: 'user',
-    pointsBalance: 2480,
-    lifetimePoints: 5800,
-    currentTier: 'Platinum',
-    status: 'active',
-    createdAt: '2026-03-01T10:15:00.000Z'
-  },
-  {
-    username: 'marcuschen',
-    password: 'userPass2026',
-    fullName: 'Marcus Chen',
-    email: 'marcus.chen@techbay.io',
-    passId: 'PASS-7729-SF',
-    pinCode: '88219',
-    role: 'user',
-    pointsBalance: 890,
-    lifetimePoints: 1600,
-    currentTier: 'Silver',
-    status: 'active',
-    createdAt: '2026-04-18T16:45:00.000Z'
-  },
-  {
-    username: 'sofiarodriguez',
-    password: 'userPass2026',
-    fullName: 'Sofia Rodriguez',
-    email: 'sofia.r@valenciagoods.com',
-    passId: 'PASS-3318-SF',
-    pinCode: '45021',
-    role: 'user',
-    pointsBalance: 320,
-    lifetimePoints: 480,
-    currentTier: 'Bronze',
-    status: 'active',
-    createdAt: '2026-06-22T09:20:00.000Z'
-  },
-  {
-    username: 'merchant_sf',
-    password: 'posSecret2026',
-    fullName: 'Artisanal Roastery POS',
-    email: 'merchant@roastery.com',
-    passId: 'MERCHANT-POS-101',
-    pinCode: '12345',
-    role: 'merchant',
-    pointsBalance: 14500,
-    lifetimePoints: 34000,
-    currentTier: 'Platinum',
-    status: 'active',
-    createdAt: '2026-01-15T11:00:00.000Z'
-  }
-];
+export let usersDB: RegisteredUser[] = [];
 
 export async function initFirestoreSync() {
   if (!db) {
@@ -307,38 +222,23 @@ export async function initFirestoreSync() {
   try {
     console.log('[Firestore] Initializing data synchronization with Firestore...');
 
-    // 1. Sync Users
+    // 1. Sync Users from Firestore
     const usersColRef = collection(db, 'users');
     const usersSnap = await getDocs(usersColRef);
-    if (usersSnap.empty) {
-      console.log('[Firestore] Populating initial users to Firestore...');
-      for (const u of usersDB) {
-        await setDoc(doc(db, 'users', u.username.toLowerCase()), u);
-      }
-    } else {
-      usersDB.length = 0;
+    usersDB.length = 0;
+    if (!usersSnap.empty) {
+      const seen = new Set<string>();
       usersSnap.forEach((d) => {
-        usersDB.push(d.data() as RegisteredUser);
+        const u = d.data() as RegisteredUser;
+        const key = (u.username || d.id).toLowerCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          usersDB.push(u);
+        }
       });
-
-      // Ensure mambiadmin is always present in usersDB and Firestore
-      const adminExists = usersDB.some((u) => u.username.toLowerCase() === 'mambiadmin');
-      if (!adminExists) {
-        const adminUser: RegisteredUser = {
-          username: 'mambiadmin',
-          password: '409H!llarY409',
-          fullName: 'Mambi Administrator',
-          email: 'mambiadmin@omniloyalty.internal',
-          passId: 'ADMIN-409-SF',
-          pinCode: '40900',
-          role: 'admin'
-        };
-        usersDB.unshift(adminUser);
-        await setDoc(doc(db, 'users', 'mambiadmin'), adminUser);
-        console.log('[Firestore] Seeded mambiadmin to Firestore users collection.');
-      }
-
       console.log(`[Firestore] Loaded ${usersDB.length} registered users from Firestore.`);
+    } else {
+      console.log('[Firestore] 0 registered users found in Firestore users collection.');
     }
 
     // 2. Sync Wallet
@@ -726,24 +626,17 @@ export async function fetchLatestUsers(): Promise<RegisteredUser[]> {
   if (db) {
     try {
       const usersSnap = await getDocs(collection(db, 'users'));
+      usersDB.length = 0;
       if (!usersSnap.empty) {
-        const freshUsers: RegisteredUser[] = [];
+        const seen = new Set<string>();
         usersSnap.forEach((d) => {
-          freshUsers.push(d.data() as RegisteredUser);
-        });
-        for (const u of freshUsers) {
-          const idx = usersDB.findIndex((x) => x.username.toLowerCase() === u.username.toLowerCase());
-          if (idx >= 0) {
-            usersDB[idx] = { ...usersDB[idx], ...u };
-          } else {
+          const u = d.data() as RegisteredUser;
+          const key = (u.username || d.id).toLowerCase();
+          if (!seen.has(key)) {
+            seen.add(key);
             usersDB.push(u);
           }
-        }
-      } else {
-        // Seed default members if Firestore users collection is empty
-        for (const u of usersDB) {
-          await setDoc(doc(db, 'users', u.username.toLowerCase()), u);
-        }
+        });
       }
     } catch (err) {
       console.warn('[Firestore] Live users fetch notice:', err);
