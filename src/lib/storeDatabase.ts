@@ -2,6 +2,7 @@ import {
   db,
   collection,
   doc,
+  getDoc,
   getDocs,
   setDoc,
   updateDoc
@@ -30,6 +31,82 @@ export const ENRICHED_DEFAULT_STORES: Store[] = INITIAL_STORES.map((s, index) =>
   managerName: s.managerName || ['Jordan Hayes', 'Elena Rostova', 'David Kim', 'Samira Patel', 'Marcus Vance', 'Chloe Dubois'][index % 6],
   socialHandle: s.socialHandle || `@${s.name.toLowerCase().replace(/[^a-z0-9]/g, '')}_sf`
 }));
+
+export async function fetchStoreById(storeId: string): Promise<Store | null> {
+  if (!storeId) return null;
+  // 1. Direct Firestore check
+  if (db) {
+    try {
+      const snap = await getDoc(doc(db, 'stores', storeId));
+      if (snap.exists()) {
+        const d = snap.data() as Store;
+        return {
+          ...d,
+          id: d.id || snap.id,
+          schedule: d.schedule || DEFAULT_WEEKLY_SCHEDULE
+        };
+      }
+    } catch (err) {
+      console.warn('[Firestore] fetchStoreById error:', err);
+    }
+  }
+
+  // 2. Fetch from stores list
+  try {
+    const { stores } = await fetchOrSeedStores();
+    const found = stores.find((s) => s.id === storeId);
+    if (found) return found;
+  } catch (e) {}
+
+  return null;
+}
+
+export async function findLiveStoreForMerchant(user: { username?: string; email?: string; fullName?: string }): Promise<Store | null> {
+  if (!user) return null;
+  const uName = (user.username || '').toLowerCase();
+  const uEmail = (user.email || '').toLowerCase();
+  const uFullName = (user.fullName || '').toLowerCase();
+
+  // 1. Check direct doc ID: `store-${uName}`
+  if (uName) {
+    const directStore = await fetchStoreById(`store-${uName}`);
+    if (directStore) return directStore;
+  }
+
+  // 2. Query all stores
+  try {
+    const { stores } = await fetchOrSeedStores();
+    // Direct ID match
+    const byId = stores.find((s) => s.id.toLowerCase() === `store-${uName}` || s.id.toLowerCase() === uName);
+    if (byId) return byId;
+
+    // Email match
+    if (uEmail) {
+      const byEmail = stores.find((s) => s.email && s.email.toLowerCase() === uEmail);
+      if (byEmail) return byEmail;
+    }
+
+    // Social handle match
+    if (uName) {
+      const bySocial = stores.find((s) => s.socialHandle && s.socialHandle.toLowerCase().includes(uName));
+      if (bySocial) return bySocial;
+    }
+
+    // Manager name match
+    if (uFullName) {
+      const byManager = stores.find((s) => s.managerName && s.managerName.toLowerCase() === uFullName);
+      if (byManager) return byManager;
+    }
+
+    // Fallback: name contains username keywords
+    const byKeyword = stores.find((s) => s.name.toLowerCase().includes(uName));
+    if (byKeyword) return byKeyword;
+  } catch (err) {
+    console.warn('[Store] findLiveStoreForMerchant note:', err);
+  }
+
+  return null;
+}
 
 export async function fetchOrSeedStores(): Promise<{ stores: Store[]; fromFirestore: boolean }> {
   // 1. Try fetching from server API

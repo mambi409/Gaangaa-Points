@@ -134,9 +134,9 @@ export async function seedAllDefaultMembersToFirestore(): Promise<number> {
 }
 
 export async function saveMemberAccount(user: AdminUserItem, password?: string, pinCode?: string): Promise<void> {
-  // Update via API if accessible
+  // 1. Update via API if accessible
   try {
-    await fetch('/api/admin/users/create', {
+    const updateRes = await fetch('/api/admin/users/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -144,25 +144,57 @@ export async function saveMemberAccount(user: AdminUserItem, password?: string, 
         fullName: user.fullName,
         email: user.email,
         role: user.role,
-        tier: user.currentTier,
+        currentTier: user.currentTier,
         pointsBalance: user.pointsBalance,
-        password: password || 'userPass2026',
-        pinCode: pinCode || '12345'
+        status: user.status,
+        password: password || undefined,
+        pinCode: pinCode || undefined
       })
     });
+    if (!updateRes.ok) {
+      await fetch('/api/admin/users/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: user.username,
+          fullName: user.fullName,
+          email: user.email,
+          role: user.role,
+          tier: user.currentTier,
+          pointsBalance: user.pointsBalance,
+          password: password || 'userPass2026',
+          pinCode: pinCode || '12345'
+        })
+      });
+    }
   } catch (err) {
     console.log('[API] Save user route note:', err);
   }
 
-  // Save directly to Firestore
+  // 2. Save directly to Firestore
   if (db) {
     try {
-      const userRef = doc(db, 'users', user.username.toLowerCase());
-      await setDoc(userRef, {
+      const userPayload: any = {
         ...user,
-        password: password || 'userPass2026',
-        pinCode: pinCode || '12345'
-      }, { merge: true });
+        username: user.username,
+        fullName: user.fullName,
+        email: user.email,
+        role: user.role,
+        currentTier: user.currentTier,
+        pointsBalance: user.pointsBalance,
+        status: user.status || 'active',
+        updatedAt: new Date().toISOString()
+      };
+      if (password) userPayload.password = password;
+      if (pinCode) userPayload.pinCode = pinCode;
+
+      const userRef = doc(db, 'users', user.username.toLowerCase());
+      await setDoc(userRef, userPayload, { merge: true });
+
+      if (user.email && user.email.trim()) {
+        await setDoc(doc(db, 'users', user.email.trim().toLowerCase()), userPayload, { merge: true });
+      }
+      console.log(`[Firestore] User ${user.username} saved successfully.`);
     } catch (fsErr) {
       console.warn('[Firestore] Error saving user to Firestore:', fsErr);
     }

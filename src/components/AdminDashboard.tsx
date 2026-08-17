@@ -105,7 +105,9 @@ import {
 import {
   DEFAULT_WEEKLY_SCHEDULE,
   saveStoreToDatabase,
-  ENRICHED_DEFAULT_STORES
+  ENRICHED_DEFAULT_STORES,
+  fetchStoreById,
+  findLiveStoreForMerchant
 } from '../lib/storeDatabase';
 
 // Weekly Schedule Days definition
@@ -587,7 +589,7 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     }
   };
 
-  const handleOpenEditUser = (
+  const handleOpenEditUser = async (
     user: AdminUserItem,
     initialTab?: 'store-profile' | 'location' | 'schedule' | 'contact' | 'loyalty' | 'account'
   ) => {
@@ -602,6 +604,38 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
     loadStoreDataIntoEdit(matchedStore, user);
     setEditUserTab(initialTab || (isMerchant ? 'store-profile' : 'account'));
+
+    // Automatically load full data as in profile view when editing merchant account
+    if (isMerchant) {
+      try {
+        const liveStore = await findLiveStoreForMerchant(user);
+        if (liveStore) {
+          loadStoreDataIntoEdit(liveStore, user);
+        }
+      } catch (err) {
+        console.warn('[Admin] Live store profile lookup notice:', err);
+      }
+    }
+  };
+
+  const handleReloadLiveStoreData = async () => {
+    if (!selectedUserForEdit) return;
+    showToast('Loading full profile data from Firestore database...', 'info');
+    try {
+      let storeToLoad = await fetchStoreById(editLinkedStoreId);
+      if (!storeToLoad) {
+        storeToLoad = await findLiveStoreForMerchant(selectedUserForEdit);
+      }
+      if (!storeToLoad) {
+        storeToLoad = findStoreForUser(selectedUserForEdit, stores) || (stores.length > 0 ? stores[0] : null);
+      }
+      loadStoreDataIntoEdit(storeToLoad, selectedUserForEdit);
+      showToast(`Loaded live profile data for ${storeToLoad?.name || selectedUserForEdit.fullName}!`, 'success');
+    } catch (e) {
+      const fallback = findStoreForUser(selectedUserForEdit, stores);
+      loadStoreDataIntoEdit(fallback, selectedUserForEdit);
+      showToast('Loaded store profile data from memory.', 'success');
+    }
   };
 
   // Process Logo File Upload (supports Drag & Drop and Manual Selection)
@@ -3172,16 +3206,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        onClick={() => {
-                          const matched = findStoreForUser(selectedUserForEdit, stores) || (stores.length > 0 ? stores[0] : null);
-                          loadStoreDataIntoEdit(matched, selectedUserForEdit);
-                          showToast('Reloaded store profile data from Firestore database!', 'success');
-                        }}
-                        className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition flex items-center gap-1"
-                        title="Reload full profile data as shown in Merchant Profile View"
+                        onClick={handleReloadLiveStoreData}
+                        className="px-2.5 py-1 rounded-lg bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 text-xs font-semibold transition flex items-center gap-1 cursor-pointer"
+                        title="Reload full profile data as in Merchant Profile View directly from Firestore"
                       >
                         <RefreshCw className="w-3.5 h-3.5" />
-                        <span>🔄 Load Store Profile Data</span>
+                        <span>🔄 Load All Data as in Profile View</span>
                       </button>
 
                       <button

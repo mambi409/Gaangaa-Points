@@ -109,6 +109,7 @@ async function ensureSync() {
       syncPromise = initFirestoreSync()
         .then(() => {
           isSyncInitialized = true;
+          console.log('[Firestore] Data synchronization completed successfully.');
         })
         .catch((err) => {
           console.error('[Firestore] ensureSync error:', err);
@@ -118,9 +119,17 @@ async function ensureSync() {
   }
 }
 
+// Eagerly trigger Firestore sync
+ensureSync().catch((err) => {
+  console.warn('[Firestore] Initial eager sync notice:', err);
+});
+
+// Middleware to ensure database is synchronized for all requests
 app.use(async (req, res, next) => {
-  if (req.path.startsWith('/api') || req.url.startsWith('/api')) {
+  try {
     await ensureSync();
+  } catch (err) {
+    console.warn('[Server] ensureSync middleware notice:', err);
   }
   next();
 });
@@ -2166,7 +2175,7 @@ app.post('/api/admin/users/create', async (req, res) => {
 });
 
 // API ROUTE: Edit / Update User Profile
-app.put('/api/admin/users/update', async (req, res) => {
+const handleUserUpdate = async (req: express.Request, res: express.Response) => {
   try {
     const { username, fullName, email, role, pinCode, password, status, pointsBalance, currentTier } = req.body;
 
@@ -2175,15 +2184,12 @@ app.put('/api/admin/users/update', async (req, res) => {
     }
 
     const clean = username.trim().toLowerCase();
-    const userIdx = usersDB.findIndex(
-      (u) => u.username.toLowerCase() === clean || (u.email && u.email.toLowerCase() === clean)
-    );
+    let user = await findUser(clean);
 
-    if (userIdx === -1) {
-      return res.status(404).json({ error: 'User not found' });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found in system or database' });
     }
 
-    const user = usersDB[userIdx];
     if (fullName) user.fullName = fullName.trim();
     if (email) user.email = email.trim().toLowerCase();
     if (role) user.role = role;
@@ -2221,7 +2227,10 @@ app.put('/api/admin/users/update', async (req, res) => {
   } catch (err) {
     res.status(500).json({ error: 'Failed to update user' });
   }
-});
+};
+
+app.put('/api/admin/users/update', handleUserUpdate);
+app.post('/api/admin/users/update', handleUserUpdate);
 
 // API ROUTE: Delete User Account (DELETE by param)
 app.delete('/api/admin/users/:username', async (req, res) => {
@@ -2573,14 +2582,14 @@ async function startServer() {
     });
   }
 
+  // Always initialize Firestore sync in the background
+  initFirestoreSync().catch((err) => {
+    console.error('[Firestore] Background sync error:', err);
+  });
+
   if (!process.env.VERCEL) {
     app.listen(PORT, '0.0.0.0', () => {
       console.log(`Server running on http://0.0.0.0:${PORT}`);
-    });
-
-    // Initialize Firestore sync in the background
-    initFirestoreSync().catch((err) => {
-      console.error('[Firestore] Background sync error:', err);
     });
 
     // Schedule automatic scan every 30 minutes to keep strictly the latest 10 news items freshly synced in Firestore
